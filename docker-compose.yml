@@ -1,0 +1,24 @@
+services:
+
+  hotel-front:
+
+    build: .
+
+    container_name: hotel-front
+
+    ports:
+      - "9540:9540"
+
+    restart: always
+
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+    environment:
+      VITE_USUARIO_API: http://localhost:9531
+      VITE_RESERVA_API: http://localhost:9532
+      VITE_QUARTO_API: http://localhost:9533
+      VITE_PAGAMENTO_API: http://localhost:9534
+
+    command: npm run dev -- --host
