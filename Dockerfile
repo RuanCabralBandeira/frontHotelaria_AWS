@@ -10,4 +10,4 @@ COPY . .
 
 EXPOSE 9540
 
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD ["sh", "-c", "npm run build && npm start"]
