@@ -13,7 +13,7 @@ function PrivateRoute({ children }) {
 
 export default function AppRoutes() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/20261prj5/hotel">
       <Routes>
         <Route path="/" element={<Menu />} />
         <Route path="/login" element={<Login />} />
