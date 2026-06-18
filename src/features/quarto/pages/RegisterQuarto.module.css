@@ -9,6 +9,11 @@
 .logoText { font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 4px; color: var(--text-primary); }
 .adminTag { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--pink);
   border: 1px solid var(--border-pink); border-radius: 4px; padding: 2px 8px; margin-left: 6px; }
+.navLinks { display: flex; gap: 4px; }
+.navLink { background: none; border: none; color: var(--text-secondary); cursor: pointer;
+  font-size: 14px; padding: 8px 16px; border-radius: var(--radius-sm); transition: .2s; }
+.navLink:hover { color: var(--text-primary); background: var(--bg-card2); }
+.navLinkActive { color: var(--pink); background: var(--bg-card2); }
 .navRight { display: flex; align-items: center; gap: 16px; }
 .userName { font-size: 14px; color: var(--text-secondary); }
 .logoutBtn { background: none; border: 1px solid var(--border); color: var(--text-secondary);
@@ -21,6 +26,8 @@
 .header { margin-bottom: 32px; }
 .eyebrow { color: var(--pink); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; margin: 0 0 8px; }
 .title { font-family: 'Cormorant Garamond', serif; font-weight: 300; font-size: 42px; margin: 0; color: var(--text-primary); }
+
+/* Form card */
 .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 40px; box-shadow: var(--shadow); animation: fadeIn .4s ease; }
 .loadingCard { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -57,11 +64,67 @@ select.input { cursor: pointer; }
   border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; font-weight: 600; transition: .2s; }
 .btnPrimary:hover { background: var(--pink-hover); box-shadow: var(--shadow-pink); }
 .btnPrimary:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Fotos card */
+.fotosCard { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 32px 40px; margin-top: 24px; box-shadow: var(--shadow); animation: fadeIn .4s ease; }
+.fotosHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.fotosTitle { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; }
+.fotosCount { font-size: 12px; color: var(--text-muted); background: var(--bg-input);
+  border: 1px solid var(--border); border-radius: 20px; padding: 3px 12px; }
+
+/* Grid de fotos */
+.fotoGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px; margin-bottom: 24px; }
+.fotoItem { position: relative; border-radius: var(--radius-sm); overflow: hidden;
+  aspect-ratio: 4/3; border: 1px solid var(--border); }
+.fotoImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fotoOverlay { position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+  opacity: 0; transition: .2s; display: flex; flex-direction: column;
+  align-items: flex-start; justify-content: flex-end; padding: 10px; gap: 6px; }
+.fotoItem:hover .fotoOverlay { opacity: 1; }
+.fotoNome { font-size: 11px; color: #fff; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 100%; }
+.fotoDeleteBtn { position: absolute; top: 8px; right: 8px; background: rgba(255,107,107,0.9);
+  border: none; color: #fff; width: 26px; height: 26px; border-radius: 50%;
+  cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;
+  transition: .2s; }
+.fotoDeleteBtn:hover { background: #ff6b6b; }
+.fotoDeleteBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Upload */
+.uploadArea { border: 1.5px dashed var(--border); border-radius: var(--radius-sm);
+  overflow: hidden; transition: .2s; }
+.uploadArea:hover { border-color: var(--border-pink); }
+.uploadTrigger { width: 100%; background: none; border: none; cursor: pointer;
+  padding: 32px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: var(--text-secondary); transition: .2s; }
+.uploadTrigger:hover { background: var(--bg-card2); color: var(--text-primary); }
+.uploadIcon { font-size: 28px; color: var(--pink); display: block; }
+.uploadHint { font-size: 12px; color: var(--text-muted); }
+.uploadPreview { display: flex; gap: 20px; align-items: center; padding: 16px; background: var(--bg-card2); }
+.previewImg { width: 100px; height: 76px; object-fit: cover; border-radius: 6px;
+  border: 1px solid var(--border); flex-shrink: 0; }
+.uploadPreviewActions { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.uploadFileName { font-size: 13px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uploadBtns { display: flex; gap: 10px; }
+
+/* Locked state */
+.fotosLockedCard { background: var(--bg-card); border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 32px 40px; margin-top: 24px; display: flex; align-items: center; gap: 16px;
+  color: var(--text-muted); font-size: 14px; }
+.fotosLockedIcon { font-size: 24px; }
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (max-width: 680px) {
-  .nav { padding: 16px 20px; }
+  .nav { padding: 16px 20px; flex-wrap: wrap; gap: 12px; }
+  .navLinks { order: 3; width: 100%; }
   .main { padding: 24px 16px 60px; }
-  .card { padding: 24px; }
+  .card, .fotosCard { padding: 24px; }
   .row { grid-template-columns: 1fr; gap: 18px; }
   .title { font-size: 32px; }
+  .fotoGrid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .uploadPreview { flex-direction: column; }
+  .previewImg { width: 100%; height: 140px; }
 }

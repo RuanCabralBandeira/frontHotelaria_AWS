@@ -6,9 +6,15 @@ import styles from './Quartos.module.css';
 
 const STATUS_MAP = {
   1: { label: 'Disponível', cls: 'avail' },
-  2: { label: 'Ocupado', cls: 'busy' },
+  2: { label: 'Ocupado',    cls: 'busy'  },
   3: { label: 'Manutenção', cls: 'maint' },
 };
+
+function fotoSrc(foto) {
+  if (!foto) return null;
+  if (foto.foto_bin?.startsWith('data:')) return foto.foto_bin;
+  return `data:image/${foto.foto_extensao || 'jpeg'};base64,${foto.foto_bin}`;
+}
 
 export default function Quartos() {
   const navigate = useNavigate();
@@ -48,8 +54,10 @@ export default function Quartos() {
 
   const handleLogout = () => { logout(); navigate('/'); };
 
-  const total = quartos.length;
+  const total       = quartos.length;
   const disponiveis = quartos.filter((q) => q.status === 1).length;
+  const ocupados    = quartos.filter((q) => q.status === 2).length;
+  const manutencao  = quartos.filter((q) => q.status === 3).length;
 
   return (
     <div className={styles.wrapper}>
@@ -59,6 +67,10 @@ export default function Quartos() {
           <span className={styles.logoIcon}>◆</span>
           <span className={styles.logoText}>HOTEL LUXE</span>
           <span className={styles.adminTag}>ADMIN</span>
+        </div>
+        <div className={styles.navLinks}>
+          <button className={`${styles.navLink} ${styles.navLinkActive}`} onClick={() => navigate('/admin/quartos')}>Quartos</button>
+          <button className={styles.navLink} onClick={() => navigate('/admin/tipos-quarto')}>Tipos de quarto</button>
         </div>
         <div className={styles.navRight}>
           <span className={styles.userName}>{user?.login || 'Admin'}</span>
@@ -81,11 +93,19 @@ export default function Quartos() {
           <div className={styles.stats}>
             <div className={styles.statCard}>
               <span className={styles.statVal}>{total}</span>
-              <span className={styles.statLabel}>Quartos cadastrados</span>
+              <span className={styles.statLabel}>Total</span>
             </div>
             <div className={styles.statCard}>
-              <span className={styles.statVal}>{disponiveis}</span>
+              <span className={`${styles.statVal} ${styles.statAvail}`}>{disponiveis}</span>
               <span className={styles.statLabel}>Disponíveis</span>
+            </div>
+            <div className={styles.statCard}>
+              <span className={`${styles.statVal} ${styles.statBusy}`}>{ocupados}</span>
+              <span className={styles.statLabel}>Ocupados</span>
+            </div>
+            <div className={styles.statCard}>
+              <span className={`${styles.statVal} ${styles.statMaint}`}>{manutencao}</span>
+              <span className={styles.statLabel}>Manutenção</span>
             </div>
           </div>
         )}
@@ -118,6 +138,7 @@ export default function Quartos() {
             <table className={styles.table}>
               <thead>
                 <tr>
+                  <th className={styles.thFoto}>Foto</th>
                   <th>Nº</th>
                   <th>Tipo</th>
                   <th>Preço</th>
@@ -128,8 +149,20 @@ export default function Quartos() {
               <tbody>
                 {quartos.map((q) => {
                   const st = STATUS_MAP[q.status] || STATUS_MAP[1];
+                  const primeiraFoto = q.fotos?.[0];
                   return (
                     <tr key={q.id}>
+                      <td className={styles.tdFoto}>
+                        {primeiraFoto ? (
+                          <img
+                            className={styles.thumb}
+                            src={fotoSrc(primeiraFoto)}
+                            alt="foto"
+                          />
+                        ) : (
+                          <div className={styles.thumbPlaceholder}>◈</div>
+                        )}
+                      </td>
                       <td className={styles.numero}>{q.numero || `#${q.id}`}</td>
                       <td>{q.tipoQuarto?.descricao || '—'}</td>
                       <td className={styles.preco}>
