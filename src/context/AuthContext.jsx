@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { usuarioApi } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -14,6 +15,20 @@ export function AuthProvider({ children }) {
     }
     setLoading(false);
   }, []);
+
+  // Busca cliente_id no MS Cliente após login (usuario_id ≠ cliente_id)
+  useEffect(() => {
+    if (!user || user.clienteId) return;
+    usuarioApi.get('/').then(({ data }) => {
+      const list = Array.isArray(data) ? data : [data];
+      const cliente = list.find(c => c.usuario_id === user.id);
+      if (cliente?.cliente_id) {
+        const updated = { ...user, clienteId: cliente.cliente_id };
+        localStorage.setItem('user', JSON.stringify(updated));
+        setUser(updated);
+      }
+    }).catch(() => {});
+  }, [user?.id]);
 
   const login = (token, userData) => {
     localStorage.setItem('token', token);

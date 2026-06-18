@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { quartoApi } from '../../services/api';
+import ReservaModal from './ReservaModal';
 import styles from './Home.module.css';
 
 const STATUS_MAP = { 1: 'Disponível', 2: 'Ocupado', 3: 'Manutenção' };
@@ -61,7 +62,7 @@ function QuartoCard({ quarto, onClick }) {
   );
 }
 
-function QuartoModal({ quarto, onClose }) {
+function QuartoModal({ quarto, onClose, onReservar }) {
   if (!quarto) return null;
   const tipoNome = quarto.tipoQuarto?.descricao || 'Quarto';
   const placeholder = `https://images.unsplash.com/photo-${
@@ -125,7 +126,7 @@ function QuartoModal({ quarto, onClose }) {
             </div>
           </div>
 
-          <button className={styles.btnReservarModal}>
+          <button className={styles.btnReservarModal} onClick={() => onReservar(quarto)}>
             Reservar Agora
           </button>
         </div>
@@ -144,6 +145,7 @@ export default function Home() {
   const [filtroStatus, setFiltroStatus] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [selectedQuarto, setSelectedQuarto] = useState(null);
+  const [reservarQuarto, setReservarQuarto] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const fetchQuartos = async () => {
@@ -206,7 +208,7 @@ export default function Home() {
             {menuOpen && (
               <div className={styles.dropdown}>
                 <button className={styles.dropdownItem} onClick={() => navigate('/configuracoes')}>Configurações</button>
-                <button className={styles.dropdownItem}>Minhas reservas</button>
+                <button className={styles.dropdownItem} onClick={() => navigate('/reservas')}>Minhas reservas</button>
                 {isAdmin && (
                   <button className={styles.dropdownItem} onClick={() => navigate('/admin/quartos')}>
                     Painel admin
@@ -322,9 +324,22 @@ export default function Home() {
         )}
       </main>
 
-      {/* Modal */}
+      {/* Detalhe do quarto */}
       {selectedQuarto && (
-        <QuartoModal quarto={selectedQuarto} onClose={() => setSelectedQuarto(null)} />
+        <QuartoModal
+          quarto={selectedQuarto}
+          onClose={() => setSelectedQuarto(null)}
+          onReservar={(q) => { setSelectedQuarto(null); setReservarQuarto(q); }}
+        />
+      )}
+
+      {/* Fluxo de reserva */}
+      {reservarQuarto && (
+        <ReservaModal
+          quarto={reservarQuarto}
+          onClose={() => setReservarQuarto(null)}
+          onReservaCriada={fetchQuartos}
+        />
       )}
 
       {/* Footer */}

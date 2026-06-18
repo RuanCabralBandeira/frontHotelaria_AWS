@@ -7,6 +7,7 @@ import Home from '../pages/Home/Home';
 import Configuracoes from '../pages/Configuracoes/Configuracoes';
 import Quartos from '../features/quarto/pages/Quartos';
 import RegisterQuarto from '../features/quarto/pages/RegisterQuarto';
+import MinhasReservas from '../pages/MinhasReservas/MinhasReservas';
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -31,6 +32,7 @@ export default function AppRoutes() {
         {/* Cliente */}
         <Route path="/home" element={<PrivateRoute><Home /></PrivateRoute>} />
         <Route path="/configuracoes" element={<PrivateRoute><Configuracoes /></PrivateRoute>} />
+        <Route path="/reservas" element={<PrivateRoute><MinhasReservas /></PrivateRoute>} />
         {/* Admin */}
         <Route path="/admin/quartos" element={<AdminRoute><Quartos /></AdminRoute>} />
         <Route path="/admin/quartos/novo" element={<AdminRoute><RegisterQuarto /></AdminRoute>} />

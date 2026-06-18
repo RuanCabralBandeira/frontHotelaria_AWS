@@ -1,0 +1,132 @@
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem;
+}
+.modal {
+  background: #0f1117; border: 1px solid rgba(255,255,255,.1); border-radius: 16px;
+  width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; position: relative;
+  color: #e8e8e8;
+}
+.btnFechar {
+  position: absolute; top: 1rem; right: 1rem; background: rgba(255,255,255,.08);
+  border: none; color: #aaa; width: 32px; height: 32px; border-radius: 50%;
+  cursor: pointer; font-size: .9rem; display: flex; align-items: center; justify-content: center;
+}
+.btnFechar:hover { background: rgba(255,255,255,.15); color: #fff; }
+
+/* Progress */
+.progressBar {
+  display: flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: 1.5rem 1.5rem .5rem; border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.progressStep {
+  display: flex; flex-direction: column; align-items: center; gap: .3rem;
+  font-size: .72rem; color: #666; flex: 1; position: relative;
+}
+.progressStep:not(:last-child)::after {
+  content: ''; position: absolute; top: 14px; left: 60%; width: 80%; height: 1px;
+  background: rgba(255,255,255,.12);
+}
+.progressStepActive { color: #c9a96e; }
+.progressStepActive .progressDot { background: #c9a96e; color: #000; }
+.progressDot {
+  width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,.08);
+  display: flex; align-items: center; justify-content: center; font-size: .78rem;
+  font-weight: 700; border: 1px solid rgba(255,255,255,.12);
+}
+
+/* Quarto info header */
+.quartoInfo {
+  display: flex; align-items: center; gap: .75rem; padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,.06); flex-wrap: wrap;
+}
+.quartoTipo { font-weight: 600; font-size: .95rem; }
+.quartoNum { color: #888; font-size: .85rem; }
+.quartoPreco { margin-left: auto; color: #c9a96e; font-weight: 700; font-size: .95rem; }
+
+.erroGeral {
+  background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3);
+  color: #fca5a5; padding: .75rem 1.5rem; font-size: .85rem; margin: .5rem 1.5rem 0;
+  border-radius: 8px;
+}
+
+/* Step body */
+.stepBody { padding: 1.5rem; }
+.stepTitle { font-size: 1.1rem; font-weight: 700; margin: 0 0 .4rem; }
+.stepSub { font-size: .85rem; color: #888; margin: 0 0 1.25rem; }
+
+/* Datas */
+.dateGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+.dateField { display: flex; flex-direction: column; gap: .4rem; }
+.dateLabel { font-size: .78rem; color: #999; font-weight: 500; }
+.dateInput {
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px; padding: .65rem .85rem; color: #e8e8e8; font-size: .9rem;
+  color-scheme: dark;
+}
+.dateInput:focus { outline: none; border-color: #c9a96e; }
+
+/* Resumo */
+.resumo {
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px; padding: 1rem; display: flex; flex-direction: column;
+  gap: .5rem; margin-bottom: 1.25rem;
+}
+.resumoRow { display: flex; justify-content: space-between; font-size: .85rem; color: #aaa; }
+.resumoTotal { font-weight: 700; color: #e8e8e8; font-size: .95rem;
+  border-top: 1px solid rgba(255,255,255,.1); padding-top: .5rem; margin-top: .25rem; }
+
+/* Pagamento */
+.tipoTabs { display: flex; gap: .5rem; margin-bottom: 1.25rem; }
+.tipoTab {
+  flex: 1; padding: .6rem; background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 8px; color: #aaa;
+  cursor: pointer; font-size: .82rem; transition: all .2s;
+}
+.tipoTab:hover { border-color: rgba(201,169,110,.4); color: #c9a96e; }
+.tipoTabActive { background: rgba(201,169,110,.12); border-color: #c9a96e; color: #c9a96e; font-weight: 600; }
+
+.formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; margin-bottom: 1.25rem; }
+.formField { display: flex; flex-direction: column; gap: .35rem; }
+.formField label { font-size: .75rem; color: #999; }
+.formField input {
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px; padding: .6rem .8rem; color: #e8e8e8; font-size: .88rem;
+}
+.formField input:focus { outline: none; border-color: #c9a96e; }
+
+.boletoInfo {
+  background: rgba(255,255,255,.04); border-radius: 10px; padding: 1.25rem;
+  margin-bottom: 1.25rem; color: #aaa; font-size: .88rem; line-height: 1.6;
+}
+
+/* Botão */
+.btnAvancar {
+  width: 100%; padding: .9rem; background: #c9a96e; border: none; border-radius: 10px;
+  color: #000; font-weight: 700; font-size: .95rem; cursor: pointer;
+  transition: opacity .2s; display: flex; align-items: center; justify-content: center;
+}
+.btnAvancar:hover:not(:disabled) { opacity: .88; }
+.btnAvancar:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Spinner */
+.spinner {
+  width: 18px; height: 18px; border: 2px solid rgba(0,0,0,.3);
+  border-top-color: #000; border-radius: 50%; animation: spin .7s linear infinite;
+}
+.spinnerGrande {
+  width: 48px; height: 48px; border: 3px solid rgba(201,169,110,.2);
+  border-top-color: #c9a96e; border-radius: 50%; animation: spin .8s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Erro */
+.erro { color: #fca5a5; font-size: .82rem; margin: -.75rem 0 1rem; }
+
+/* Concluído */
+.checkIcon {
+  width: 64px; height: 64px; background: rgba(34,197,94,.15); border: 2px solid #22c55e;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; color: #22c55e; margin: 0 auto 1rem;
+}

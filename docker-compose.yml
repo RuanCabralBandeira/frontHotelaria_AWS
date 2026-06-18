@@ -20,5 +20,6 @@ services:
       VITE_RESERVA_API: http://academico3.rj.senac.br/20261prj5/hotel/reserva
       VITE_QUARTO_API: http://academico3.rj.senac.br/20261prj5/hotel/quarto
       VITE_PAGAMENTO_API: http://academico3.rj.senac.br/20261prj5/hotel/pagamento
+      PAGAMENTO_JWT_SECRET: hotel_pagamento_secret
 
     command: sh -c "npm run build && npm start"
