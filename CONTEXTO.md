@@ -6,8 +6,9 @@
 - **Projeto escolar SENAC-RJ — 2026/1**
 
 > **Última atualização:** 2026-06-22. Sessão recente inverteu o fluxo de reserva
-> (escolher datas → ver quartos livres), adicionou validação de overbooking no MS Reserva
-> e transformou o pagamento em assíncrono (gateway simulado via RabbitMQ que aprova/recusa).
+> (escolher datas → ver quartos livres), adicionou validação de overbooking no MS Reserva,
+> transformou o pagamento em assíncrono (gateway simulado via RabbitMQ), criou o dashboard
+> admin de reservas e **repovoou o banco com 48 quartos + fotos** (scripts de seed/reset).
 > Detalhes na seção **"Sessão 2026-06-22"** ao final. O 502 no login do MS Cliente segue
 > pendente (ver seção "Sessão 2026-06-18").
 
@@ -409,3 +410,30 @@ Três mudanças, commitadas e pushadas nos respectivos repos:
 - Clique na linha → modal com pagamento em destaque + dados do hóspede (nome, idade, gênero, CPF,
   telefone — todos vêm do `findMany` do MS Cliente) + resumo da estadia (noites, preço, total estimado).
 - Link "Reservas" na nav admin (Quartos.jsx e TiposQuarto.jsx). Tudo só leitura — nenhum backend mudou.
+
+## Repovoamento do banco (executado 2026-06-22)
+Banco de produção limpo e repovoado via scripts (rodados contra o gateway `academico3`):
+- **Limpou:** 14 reservas, 19 quartos, 2 fotos, 3 tipos antigos.
+- **Criou:** 10 tipos (Standard, Casal, Solteiro, Luxo, Suíte, Suíte Master, Executivo, Família,
+  Premium, Cobertura) + **48 quartos** (andares 101–412, preços ~R$170–1.548) + **48 fotos**
+  (uma por quarto, ligada pelo `quarto_id`, imagem base64 em `foto_bin`).
+
+### Scripts criados (usam só `fetch` nativo do Node 20, sem dependências)
+- `pi_hotel_quarto/scripts/seed-quartos.js` — cria tipos+quartos+fotos. Idempotente (pula nº existentes).
+  Config: `QUARTO_API` (default localhost:9533), `SEM_FOTOS=1`. Fotos baixadas do Unsplash → base64.
+- `pi_hotel_quarto/scripts/reset-quartos.js` — apaga fotos+quartos (e tipos com `INCLUIR_TIPOS=1`).
+  Destrutivo: dry-run por padrão, exige `CONFIRMA=SIM`. Apaga fotos antes do quarto (FK).
+  ⚠ emite `QUARTO_REMOVIDO` → MS Reserva cancela reservas do quarto.
+- `PI_Hotel_Reserva/scripts/reset-reservas.js` — apaga todas as reservas. Dry-run; exige `CONFIRMA=SIM`.
+- ⚠ Ordem ao repovoar: reset-reservas → reset-quartos (INCLUIR_TIPOS=1) → seed-quartos.
+
+### ⚠ Permissão de push
+- `RuanCabralBandeira` NÃO tem write em `claracatarin4/pi_hotel_quarto` (push dá **403**). Os 3 commits
+  dos scripts de quarto estão **só no local** até a `claracatarin4` adicionar o Ruan como colaborador.
+  (Os repos `frontHotelaria` e `PI_Hotel_Reserva` aceitam push normalmente.)
+
+### Front puxando a foto real
+- `Home.jsx > fotoDoQuarto(quarto)`: usa `quarto.fotos[0].foto_bin` (base64) → `data:image/<ext>;base64,...`;
+  só cai no placeholder Unsplash se o quarto não tiver foto. Aplicado no card e no modal.
+- A foto vem no `GET /api/quartos` (getAll do MS Quarto inclui `fotos`). Atenção: 48 quartos com base64
+  deixam essa resposta pesada (~poucos MB) — aceitável para o escopo, mas é o motivo de manter as imagens pequenas (w=600).
