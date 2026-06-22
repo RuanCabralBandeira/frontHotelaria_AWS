@@ -5,9 +5,11 @@
 - **URL pública:** http://academico3.rj.senac.br/20261prj5/hotel/
 - **Projeto escolar SENAC-RJ — 2026/1**
 
-> **Última atualização:** 2026-06-18. Sessão recente corrigiu o fluxo de reserva/pagamento,
-> implementou o painel admin completo (fotos + tipos de quarto) e descobriu um problema de
-> 502 no MS Cliente após redeploy. Detalhes na seção **"Sessão 2026-06-18"** ao final.
+> **Última atualização:** 2026-06-22. Sessão recente inverteu o fluxo de reserva
+> (escolher datas → ver quartos livres), adicionou validação de overbooking no MS Reserva
+> e transformou o pagamento em assíncrono (gateway simulado via RabbitMQ que aprova/recusa).
+> Detalhes na seção **"Sessão 2026-06-22"** ao final. O 502 no login do MS Cliente segue
+> pendente (ver seção "Sessão 2026-06-18").
 
 ---
 
@@ -150,12 +152,16 @@ src/
 - Landing page (Menu) com hero, stats e seção de features
 - Login com JWT, show/hide senha, tratamento de erro da API
 - Cadastro de usuário
-- Home: listagem de quartos via API, filtros por status e tipo, skeleton loading, estado vazio/erro
+- **Home com fluxo por data** — usuário escolhe check-in/check-out e só então vê os quartos
+  livres no período (cruza `GET /api/quartos` + `GET /reservas` filtrando sobreposição de datas);
+  filtro por tipo; skeleton loading; estado vazio/erro
 - Modal de detalhe do quarto com amenidades
-- **ReservaModal**: fluxo completo em 4 steps (datas → pagamento → confirmando → concluído)
+- **ReservaModal**: fluxo em steps (datas → pagamento → confirmando → concluído/recusado)
+  - Datas já vêm da Home (pula a etapa de datas, abre direto no pagamento)
   - Integrado com MS Reserva (`POST /criar`) e MS Pagamento
   - Suporta cartão, boleto e depósito
-  - Polling de confirmação de reserva
+  - **Pagamento assíncrono**: dispara o gateway simulado e faz polling do status real
+    (2=confirmada, 3=recusada com motivo, timeout=ainda processando)
 - Navbar com dropdown de usuário (avatar, nome, logout, Minhas Reservas, Painel Admin se admin)
 - Rota privada (PrivateRoute) protegendo `/home`, `/reservas`, `/configuracoes`
 - Deploy funcionando no Jenkins/Docker/IIS
@@ -173,13 +179,16 @@ src/
 
 ## O que FALTA implementar ❌
 
-- [ ] MS Cliente retornando 502 no login após último redeploy — **investigar** (ver seção abaixo)
+- [ ] MS Cliente retornando 502 no login após último redeploy — **investigar** (ver seção "Sessão 2026-06-18")
 - [ ] Fotos reais na Home (hoje usa placeholder Unsplash; quarto já tem `fotos[]` na resposta da API)
 - [ ] Links da navbar: Quartos, Reservas, Serviços, Contato (atualmente sem função)
 - [ ] Persistir preferências da página Configurações (hoje só visuais)
 - [ ] Editar dados de perfil de verdade (precisa endpoint no MS Cliente ligando `usuario`↔`cliente`)
 - [ ] **Proteção de `role` no backend** (hoje a barreira admin é só no front) — opcional, se exigido
 - [ ] Upload/exibição de fotos na Home (infra pronta no admin, falta usar na listagem pública)
+- [ ] Overbooking: a checagem de sobreposição é `findFirst` (sem transação) — corrida de concorrência
+      ainda permite, em teoria, duas reservas simultâneas no mesmo quarto/data (ver "Sessão 2026-06-22")
+- [ ] Revalidar sobreposição também no `PUT /reservas/:id` (hoje só o `POST /criar` valida)
 
 ---
 
@@ -219,7 +228,10 @@ src/
 ### MS Reserva (Restify, 9532) — gateway `/reserva`
 - `GET /reservas` · `GET /reservas/:id` · `POST /criar` · `PUT /reservas/:id` · `DELETE /reservas/:id`
 - `POST /criar`: `{ reserva_checkin, reserva_checkout, reserva_status, cliente_id, quarto_id, pagamento_status, tipo_quarto_id }`
-- Valida cliente e disponibilidade do quarto (axios síncrono) antes de criar.
+- Valida cliente (axios) + status do quarto (axios, status 1 = Disponível) + **sobreposição de datas**
+  (consulta `prisma.reserva` por reservas ativas [status 1 ou 2] do mesmo quarto que se sobreponham → 409). Ver "Sessão 2026-06-22".
+- `reserva_status`: `1=Pendente, 2=Confirmada, 3=Cancelada, 4=Realocação`
+- Consome `pagamento_queue` (eventos `PAGAMENTO_APROVADO`/`PAGAMENTO_RECUSADO`) → vira reserva para 2 ou 3.
 
 ### MS Pagamento (Express, 9534) — gateway `/pagamento`
 - `POST /auth/login` (auth próprio) · `GET|POST /pagamentos`, `GET|PUT|PATCH|DELETE /pagamentos/:id`
@@ -229,7 +241,10 @@ src/
 - `POST /depositos` — `{ deposito_banco, deposito_valor, deposito_agencia, deposito_conta, deposito_status }`
 - `POST /tipo-pagamento` — `{ pagamento_id, reserva_id, tipo_pagamento_status, cartao_id? | boleto_id? | deposito_id? }`
   ⚠ `reserva_id` é **obrigatório** — campo NOT NULL no banco, adicionado ao schema em 2026-06-18
-- Token próprio: `VITE_PAGAMENTO_TOKEN` no docker-compose do front (ou token hardcoded no pagamentoService.js)
+- `POST /pagamentos/processar` — `{ pagamento_id, reserva_id, metodo, dados? }` → 202 `{ aprovado, motivo, estimativa_ms }`
+  (gateway simulado; após o timer publica PAGAMENTO_APROVADO/RECUSADO na fila `pagamento_queue`). Ver "Sessão 2026-06-22".
+- Token próprio: `VITE_PAGAMENTO_TOKEN` no docker-compose do front (ou token hardcoded no pagamentoService.js).
+  ⚠ Hoje o middleware `auth` (src/middlewares/auth.js) está **desligado** (passa direto) — token não é validado.
 
 ---
 
@@ -302,3 +317,73 @@ resposta. O `schema.prisma` tem `usuario_role RoleEnum @default(Cliente)` com en
 4. **`clienteId` pode ser undefined.** `AuthContext` busca via `GET /` no MS Cliente filtrando por `usuario_id`. Se falhar, `cliente_id` vai undefined no payload de reserva.
 5. **IIS precisa de `iisreset` após redeploy de containers.** Avisar o técnico de TI do SENAC toda vez que fizer rebuild.
 6. **JWT_SECRET** deve estar nas env vars do MS Cliente — se ausente, `jwt.sign` joga erro e o login retorna 500.
+
+---
+
+# Sessão 2026-06-22 — Fluxo por data, anti-overbooking e pagamento assíncrono
+
+## Resumo
+Três mudanças, commitadas e pushadas nos respectivos repos:
+1. **Fluxo de reserva invertido** (front): escolher datas → ver só os quartos livres no período.
+2. **Anti-overbooking** (MS Reserva): o servidor passou a validar sobreposição de datas.
+3. **Pagamento assíncrono** (MS Pagamento + MS Reserva + front): gateway simulado que aprova/recusa
+   e confirma a reserva via RabbitMQ, em vez de o front confirmar na hora.
+
+## Commits desta sessão
+- `frontHotelaria`: `feat: fluxo de reserva por data` + `feat: confirmacao de reserva assincrona via gateway de pagamento` + este update de contexto
+- `PI_Hotel_Reserva`: `feat: validar sobreposicao de datas ao criar reserva (anti-overbooking)` + `fix: corrigir campo pagamento_status no consumer`
+- `api_hotel_pagamento`: `feat: gateway de pagamento simulado assincrono via RabbitMQ`
+
+## 1. Fluxo por data (front)
+- `Home.jsx`: barra de busca com check-in/check-out; quartos só aparecem após datas válidas.
+  - Disponibilidade real cruzando `GET /api/quartos` + `GET /reservas`; mostra só `status === 1`
+    sem reserva ativa (status 1/2) sobreposta a `[checkin, checkout)`.
+  - Filtro de status removido; filtro de tipo mantido.
+- `ReservaModal.jsx`: aceita `datasIniciais` e pula a etapa de datas (abre direto no pagamento).
+- **Backend é "cego" para datas por conta própria**: `PI_Hotel_Reserva/src/services/quarto.service.js`
+  só checa `status === 1` (ignora as datas que recebe). A disponibilidade por data é calculada no front
+  e validada no MS Reserva via Prisma (item 2). Criar reserva NÃO muda o `status` do quarto
+  (confirmado no consumer do MS Quarto), então o `status` é só o estado manual do admin.
+
+## 2. Anti-overbooking (MS Reserva)
+- `reserva.controller.js > criar`: antes do `prisma.reserva.create`, faz `findFirst` por reserva ativa
+  (status 1 ou 2) do mesmo `quarto_id` com `reserva_checkin < novoCheckout && reserva_checkout > novoCheckin`.
+  Se achar → **409** "Já existe uma reserva para este quarto no período selecionado".
+  Também valida checkout ≤ checkin → 400.
+- ⚠ Limitações conhecidas: sem transação (corrida de concorrência ainda possível em teoria);
+  o `PUT /reservas/:id` não revalida sobreposição.
+
+## 3. Pagamento assíncrono (gateway simulado)
+**Cadeia:** Front → `POST /pagamentos/processar` → (timer) → publica em `pagamento_queue` → MS Reserva consome → vira reserva.
+
+- **MS Pagamento** (`pagamentoController.js`):
+  - `avaliarPagamento(metodo, dados)` decide aprovar/recusar:
+    - cartão: número = 16 dígitos, CVV = 3 dígitos e ≠ `000`, validade `AAAA-MM` não vencida e
+      ano ≤ atual+20, número **não** terminado em `0`. Senão, recusa com motivo.
+    - boleto e depósito: sempre compensam.
+  - `processar`: responde **202** na hora com `{ aprovado, motivo, estimativa_ms }`, agenda `setTimeout`
+    (cartão 5s, depósito 8s, boleto 12s) e ao fim atualiza `pagamento_status` e chama o producer.
+  - `pagamentoProducer.js > publishResultadoPagamento`: `sendToQueue('pagamento_queue', { evento, reserva_id, ... })`
+    com `evento` = `PAGAMENTO_APROVADO`/`PAGAMENTO_RECUSADO`. Usa fila direta (sem exchange/binding) → robusto.
+- **MS Reserva** (`pagamento.consumer.js`): já existia consumindo `pagamento_queue`; só corrigi um bug
+  (gravava `status_pagamento`, campo inexistente → agora `pagamento_status`). APROVADO → reserva 2; RECUSADO → reserva 3.
+- **Front** (`ReservaModal.jsx`): removida a confirmação imediata; após criar tudo chama `processarPagamento`,
+  vai pro step "confirmando" e faz polling do `GET /reservas/:id` (2=ok, 3=recusado com motivo, timeout ~40s=ainda processando).
+  Campos do cartão relaxados (número até 19, CVV até 4) pra que valores inválidos cheguem ao backend.
+
+### ⚠ Para funcionar em produção
+- Os **3 serviços** precisam estar na versão nova ao mesmo tempo (front chama `/pagamentos/processar`,
+  MS Pagamento publica, MS Reserva consome).
+- Todos no **mesmo RabbitMQ** (`RABBITMQ_URL` consistente via Infisical).
+- Após o redeploy do Jenkins, lembrar do **`iisreset`** (item 5 dos pontos de atenção).
+
+## Sobre o erro 502 (explicação)
+- **502 Bad Gateway** = o IIS/ARR (gateway) repassou a requisição ao container, mas **não recebeu uma
+  resposta HTTP válida a tempo** (container caído, travado, ou demorando além do timeout do proxy).
+  É diferente do 500 "URL Rewrite Module Error" (IP do container desatualizado no IIS após redeploy).
+- No caso do **login do MS Cliente**: leva ~21s e devolve 502. O código está correto
+  (`usuario.controller.js` lê `usuario_role`, gera JWT). O `prisma.js` cria `new PrismaClient()` sem
+  config especial e o `login` faz `prisma.usuario.findUnique` logo no início. Os ~21s batem com
+  **timeout de conexão ao MySQL** (o Prisma fica tentando conectar e o gateway desiste antes → 502).
+  Causa provável: `DATABASE_URL` errada/inacessível no container novo, ou o MySQL recusando a conexão.
+  **Investigar a conexão/env do banco — não mexer no código.** (ver "Sessão 2026-06-18", "O que verificar").
