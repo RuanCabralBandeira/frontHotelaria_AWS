@@ -124,12 +124,16 @@ src/
         TiposQuarto.jsx    ← CRUD inline de tipos de quarto (rota /admin/tipos-quarto)
       services/
         QuartoService.jsx  ← CRUD de quarto + fotos (criar/listar/excluir) + tipos (CRUD completo)
+    reserva/
+      pages/
+        ReservasAdmin.jsx  ← dashboard admin de reservas (rota /admin/reservas)
   context/
     AuthContext.jsx  ← JWT salvo no localStorage; expõe user.role e isAdmin; busca clienteId no MS Cliente
   services/
     api.js           ← 4 instâncias Axios com interceptor JWT automático
     reservaService.js
-    pagamentoService.js ← token próprio via VITE_PAGAMENTO_TOKEN (JWT separado)
+    clienteService.js   ← listarClientes/buscarCliente (MS Cliente)
+    pagamentoService.js ← token próprio via VITE_PAGAMENTO_TOKEN (JWT separado); processarPagamento
   routes/
     AppRoutes.jsx ← PrivateRoute (cliente) + AdminRoute (admin)
   utils/
@@ -176,6 +180,9 @@ src/
 - **Tipos de quarto** — CRUD inline em `/admin/tipos-quarto` (criar via form, editar in-place, excluir com confirmação)
 - **Página de Configurações** do cliente (abas Perfil / Conta / Preferências)
 - **Minhas Reservas** — listagem com filtro por `cliente_id`
+- **Dashboard admin de reservas** (`/admin/reservas`) — cruza MS Reserva + Quarto + Cliente:
+  quem reservou, quando, qual quarto, status, pagamento; stats (total/confirmadas/ocupados hoje);
+  filtro + busca; modal de detalhes com dados do hóspede (nome, idade, gênero, CPF, telefone)
 
 ## O que FALTA implementar ❌
 
@@ -387,3 +394,18 @@ Três mudanças, commitadas e pushadas nos respectivos repos:
   **timeout de conexão ao MySQL** (o Prisma fica tentando conectar e o gateway desiste antes → 502).
   Causa provável: `DATABASE_URL` errada/inacessível no container novo, ou o MySQL recusando a conexão.
   **Investigar a conexão/env do banco — não mexer no código.** (ver "Sessão 2026-06-18", "O que verificar").
+- ⚠ Update 2026-06-22: testado da casa do dev, o login respondeu em ~0,35s (404 p/ user inexistente),
+  ou seja, **o 502 parece intermitente/resolvido**. O que estava travando o dev local era o
+  `.env.local` apontando as `VITE_*_API` para `localhost` (Docker que nunca subiu) — **arquivo apagado**.
+  O front sem `.env.local` usa os defaults de produção (`academico3...`) em `src/services/api.js`.
+
+## Dashboard admin de reservas (adicionado 2026-06-22)
+- `src/features/reserva/pages/ReservasAdmin.jsx` (rota `/admin/reservas`, AdminRoute) + `clienteService.js`.
+- Cruza `GET /reservas` + `listarQuartos()` + `listarClientes()` (MS Cliente `GET /`) montando mapas
+  `quarto_id→quarto` e `cliente_id→cliente`.
+- Tabela: nº, cliente (nome), quarto (nº+tipo), check-in/out, período (andamento/futura/encerrada),
+  status da reserva, pagamento (Aguardando/Pago/Recusado). Filtro por status + busca.
+- Stats: total, confirmadas, **quartos ocupados hoje** (reservas ativas cobrindo a data atual).
+- Clique na linha → modal com pagamento em destaque + dados do hóspede (nome, idade, gênero, CPF,
+  telefone — todos vêm do `findMany` do MS Cliente) + resumo da estadia (noites, preço, total estimado).
+- Link "Reservas" na nav admin (Quartos.jsx e TiposQuarto.jsx). Tudo só leitura — nenhum backend mudou.
