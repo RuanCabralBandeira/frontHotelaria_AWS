@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { listarReservas } from '../../../services/reservaService';
 import { listarQuartos } from '../../quarto/services/QuartoService';
 import { listarClientes } from '../../../services/clienteService';
+import { maskCPF, maskTelefone } from '../../../utils/validators';
 import styles from './ReservasAdmin.module.css';
 
 const RESERVA_STATUS = {
@@ -291,8 +292,8 @@ export default function ReservasAdmin() {
                   <div className={styles.infoItem}><span className={styles.infoLabel}>Nome</span><span className={styles.infoVal}>{c?.cliente_nome || nomeCliente(r.cliente_id)}</span></div>
                   <div className={styles.infoItem}><span className={styles.infoLabel}>Idade</span><span className={styles.infoVal}>{c?.cliente_idade != null ? `${c.cliente_idade} anos` : '—'}</span></div>
                   <div className={styles.infoItem}><span className={styles.infoLabel}>Gênero</span><span className={styles.infoVal}>{c?.cliente_genero || '—'}</span></div>
-                  <div className={styles.infoItem}><span className={styles.infoLabel}>CPF</span><span className={styles.infoVal}>{c?.cliente_cpf || '—'}</span></div>
-                  <div className={styles.infoItem}><span className={styles.infoLabel}>Telefone</span><span className={styles.infoVal}>{c?.cliente_telefone || '—'}</span></div>
+                  <div className={styles.infoItem}><span className={styles.infoLabel}>CPF</span><span className={styles.infoVal}>{c?.cliente_cpf ? maskCPF(c.cliente_cpf) : '—'}</span></div>
+                  <div className={styles.infoItem}><span className={styles.infoLabel}>Telefone</span><span className={styles.infoVal}>{c?.cliente_telefone ? maskTelefone(c.cliente_telefone) : '—'}</span></div>
                   {!c && <div className={styles.infoItem}><span className={styles.infoLabel}>Obs.</span><span className={styles.infoVal}>Dados do cliente indisponíveis</span></div>}
                 </div>
               </div>

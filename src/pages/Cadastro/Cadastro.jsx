@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { usuarioApi } from '../../services/api';
+import { maskCPF, maskTelefone, validarCPF, validarTelefone } from '../../utils/validators';
 import styles from './Cadastro.module.css';
 
 const STEPS = ['Acesso', 'Perfil', 'Pronto'];
@@ -33,7 +34,11 @@ export default function Cadastro() {
   };
 
   const handleClienteChange = (e) => {
-    setClienteForm({ ...clienteForm, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    let v = value;
+    if (name === 'cliente_cpf') v = maskCPF(value);
+    else if (name === 'cliente_telefone') v = maskTelefone(value);
+    setClienteForm((f) => ({ ...f, [name]: v }));
     setError('');
   };
 
@@ -74,13 +79,26 @@ export default function Cadastro() {
       setError('Preencha todos os campos do perfil.');
       return;
     }
+    if (!validarCPF(cliente_cpf)) {
+      setError('CPF inválido. Confira os números digitados.');
+      return;
+    }
+    if (!validarTelefone(cliente_telefone)) {
+      setError('Telefone inválido. Informe DDD + número.');
+      return;
+    }
+    const idadeNum = parseInt(cliente_idade, 10);
+    if (Number.isNaN(idadeNum) || idadeNum < 18 || idadeNum > 120) {
+      setError('Idade deve estar entre 18 e 120 anos.');
+      return;
+    }
     setLoading(true);
     try {
       await usuarioApi.post('/', {
         cliente_nome,
-        cliente_cpf,
-        cliente_telefone,
-        cliente_idade: parseInt(cliente_idade),
+        cliente_cpf,        // já padronizado pela máscara: 000.000.000-00
+        cliente_telefone,   // já padronizado: (00) 00000-0000
+        cliente_idade: idadeNum,
         cliente_genero,
         cliente_status: 'Ativo',
         usuario_id: usuarioId,
@@ -201,11 +219,11 @@ export default function Cadastro() {
                 <div className={styles.row}>
                   <div className={styles.field}>
                     <label className={styles.label}>CPF <span className={styles.req}>*</span></label>
-                    <input className={styles.input} type="text" name="cliente_cpf" value={clienteForm.cliente_cpf} onChange={handleClienteChange} placeholder="000.000.000-00" />
+                    <input className={styles.input} type="text" name="cliente_cpf" value={clienteForm.cliente_cpf} onChange={handleClienteChange} placeholder="000.000.000-00" inputMode="numeric" maxLength={14} />
                   </div>
                   <div className={styles.field}>
                     <label className={styles.label}>Telefone <span className={styles.req}>*</span></label>
-                    <input className={styles.input} type="text" name="cliente_telefone" value={clienteForm.cliente_telefone} onChange={handleClienteChange} placeholder="(11) 99999-9999" />
+                    <input className={styles.input} type="text" name="cliente_telefone" value={clienteForm.cliente_telefone} onChange={handleClienteChange} placeholder="(11) 99999-9999" inputMode="numeric" maxLength={15} />
                   </div>
                 </div>
                 <div className={styles.row}>
