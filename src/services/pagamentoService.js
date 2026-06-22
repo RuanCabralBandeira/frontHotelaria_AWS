@@ -41,3 +41,11 @@ export const criarTipoPagamento = async (payload) => {
   });
   return data;
 };
+
+// Dispara o processamento assíncrono (gateway simulado). Responde com { aprovado, motivo, estimativa_ms }.
+export const processarPagamento = async (payload) => {
+  const { data } = await pagamentoApi.post('/pagamentos/processar', payload, {
+    headers: authHeader(),
+  });
+  return data;
+};

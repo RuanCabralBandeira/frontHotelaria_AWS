@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { criarReserva, buscarReserva, atualizarReserva } from '../../services/reservaService';
-import { criarPagamento, criarCartao, criarBoleto, criarDeposito, criarTipoPagamento } from '../../services/pagamentoService';
+import { criarReserva, buscarReserva } from '../../services/reservaService';
+import { criarPagamento, criarCartao, criarBoleto, criarDeposito, criarTipoPagamento, processarPagamento } from '../../services/pagamentoService';
 import styles from './ReservaModal.module.css';
 
 const hoje = () => new Date().toISOString().split('T')[0];
@@ -74,7 +74,7 @@ function StepPagamento({ quarto, datas, onPagar, processando }) {
     if (tipo === 'cartao') {
       if (!cartao.numero || !cartao.validade || !cartao.cvv || !cartao.banco || !cartao.nome)
         return setErro('Preencha todos os dados do cartão.');
-      if (cartao.cvv.length !== 3) return setErro('CVV deve ter 3 dígitos.');
+      // A aprovação/recusa é decidida pelo "gateway" no backend — aqui só exigimos os campos.
     }
     if (tipo === 'deposito') {
       if (!deposito.banco || !deposito.agencia || !deposito.conta)
@@ -99,7 +99,7 @@ function StepPagamento({ quarto, datas, onPagar, processando }) {
         <div className={styles.formGrid}>
           <div className={styles.formField} style={{ gridColumn: '1/-1' }}>
             <label>Número do cartão</label>
-            <input maxLength={16} placeholder="0000 0000 0000 0000" value={cartao.numero} onChange={e => setCartao({ ...cartao, numero: e.target.value.replace(/\D/g, '') })} />
+            <input maxLength={19} placeholder="0000 0000 0000 0000" value={cartao.numero} onChange={e => setCartao({ ...cartao, numero: e.target.value.replace(/\D/g, '') })} />
           </div>
           <div className={styles.formField}>
             <label>Nome no cartão</label>
@@ -115,7 +115,7 @@ function StepPagamento({ quarto, datas, onPagar, processando }) {
           </div>
           <div className={styles.formField}>
             <label>CVV</label>
-            <input maxLength={3} placeholder="123" value={cartao.cvv} onChange={e => setCartao({ ...cartao, cvv: e.target.value.replace(/\D/g, '') })} />
+            <input maxLength={4} placeholder="123" value={cartao.cvv} onChange={e => setCartao({ ...cartao, cvv: e.target.value.replace(/\D/g, '') })} />
           </div>
         </div>
       )}
@@ -152,8 +152,8 @@ function StepPagamento({ quarto, datas, onPagar, processando }) {
   );
 }
 
-// Step 3 — confirmando (polling)
-function StepConfirmando({ reservaId, onConfirmado }) {
+// Step 3 — confirmando (polling do status real da reserva, atualizado via RabbitMQ)
+function StepConfirmando({ reservaId, metodo, onConfirmado, onRecusado }) {
   const tentativas = useRef(0);
 
   useEffect(() => {
@@ -161,24 +161,52 @@ function StepConfirmando({ reservaId, onConfirmado }) {
       tentativas.current += 1;
       try {
         const reserva = await buscarReserva(reservaId);
-        if (reserva.reserva_status === 2) {
+        if (reserva.reserva_status === 2) { // Confirmada
           clearInterval(id);
           onConfirmado(reserva);
+          return;
+        }
+        if (reserva.reserva_status === 3) { // Cancelada (pagamento recusado)
+          clearInterval(id);
+          onRecusado(reserva);
+          return;
         }
       } catch (_) {}
-      if (tentativas.current >= 20) {
+      if (tentativas.current >= 20) { // ~40s sem definição
         clearInterval(id);
-        onConfirmado({ reserva_id: reservaId, reserva_status: 2 });
+        onRecusado({ reserva_id: reservaId, timeout: true });
       }
-    }, 3000);
+    }, 2000);
     return () => clearInterval(id);
   }, [reservaId]);
 
   return (
     <div className={styles.stepBody} style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
       <div className={styles.spinnerGrande} />
-      <h3 className={styles.stepTitle} style={{ marginTop: '1.5rem' }}>Confirmando reserva...</h3>
-      <p className={styles.stepSub}>Aguardando confirmação do sistema. Isso pode levar alguns segundos.</p>
+      <h3 className={styles.stepTitle} style={{ marginTop: '1.5rem' }}>Processando pagamento...</h3>
+      <p className={styles.stepSub}>
+        {metodo === 'boleto'
+          ? 'Aguardando a compensação do boleto. Isso pode levar alguns segundos.'
+          : 'Confirmando o pagamento com a operadora. Isso pode levar alguns segundos.'}
+      </p>
+    </div>
+  );
+}
+
+// Step recusado — pagamento não aprovado ou ainda em processamento
+function StepRecusado({ motivo, timeout, onFechar }) {
+  return (
+    <div className={styles.stepBody} style={{ textAlign: 'center' }}>
+      <div className={styles.xIcon}>{timeout ? '⏳' : '✕'}</div>
+      <h3 className={styles.stepTitle}>{timeout ? 'Ainda processando' : 'Pagamento recusado'}</h3>
+      <p className={styles.stepSub}>
+        {timeout
+          ? 'O pagamento ainda está sendo processado. Acompanhe o status em "Minhas reservas".'
+          : (motivo || 'Seu pagamento não foi aprovado. Tente outro método ou revise os dados.')}
+      </p>
+      <button className={styles.btnAvancar} onClick={onFechar} style={{ marginTop: '1.5rem' }}>
+        Fechar
+      </button>
     </div>
   );
 }
@@ -222,6 +250,8 @@ export default function ReservaModal({ quarto, datasIniciais, onClose, onReserva
   const [datas, setDatas] = useState(temDatasIniciais ? calcDatas(datasIniciais.checkin, datasIniciais.checkout) : null);
   const [reservaId, setReservaId] = useState(null);
   const [reservaFinal, setReservaFinal] = useState(null);
+  const [metodo, setMetodo] = useState('cartao');
+  const [recusa, setRecusa] = useState({ motivo: '', timeout: false });
   const [processando, setProcessando] = useState(false);
   const [erroGeral, setErroGeral] = useState('');
 
@@ -235,8 +265,9 @@ export default function ReservaModal({ quarto, datasIniciais, onClose, onReserva
   const handlePagamento = async ({ tipo, cartao, deposito }) => {
     setProcessando(true);
     setErroGeral('');
+    setMetodo(tipo);
     try {
-      // 1. Cria a reserva
+      // 1. Cria a reserva (status 1 = Pendente — só confirma quando o pagamento for aprovado)
       const reservaPayload = {
         reserva_checkin: new Date(datas.checkin).toISOString(),
         reserva_checkout: new Date(datas.checkout).toISOString(),
@@ -250,7 +281,7 @@ export default function ReservaModal({ quarto, datasIniciais, onClose, onReserva
       const rId = reserva.reserva_id ?? reserva.id;
       setReservaId(rId);
 
-      // 2. Cria o pagamento
+      // 2. Cria o pagamento (status 1 = pendente de processamento)
       const pagamento = await criarPagamento({
         pagamento_tipo: tipo,
         pagamento_status: 1,
@@ -298,8 +329,18 @@ export default function ReservaModal({ quarto, datasIniciais, onClose, onReserva
         ...instrumentoId,
       });
 
-      // 5. Confirma a reserva
-      await atualizarReserva(rId, { reserva_status: 2, pagamento_status: 1 });
+      // 5. Dispara o "gateway" simulado. A confirmação NÃO é mais imediata:
+      //    o backend processa, decide aprovar/recusar e avisa o MS Reserva via RabbitMQ.
+      const resultado = await processarPagamento({
+        pagamento_id: pagId,
+        reserva_id: rId,
+        metodo: tipo,
+        dados: tipo === 'cartao'
+          ? { numero: cartao.numero, cvv: cartao.cvv, validade: cartao.validade }
+          : {},
+      });
+      // Guarda o motivo (caso recuse) — a tela final usa o status real vindo do polling.
+      setRecusa({ motivo: resultado?.motivo || '', timeout: false });
 
       if (onReservaCriada) onReservaCriada();
       setStep('confirmando');
@@ -315,15 +356,20 @@ export default function ReservaModal({ quarto, datasIniciais, onClose, onReserva
     setStep('concluido');
   };
 
+  const handleRecusado = (reserva) => {
+    setRecusa((r) => ({ motivo: r.motivo, timeout: Boolean(reserva?.timeout) }));
+    setStep('recusado');
+  };
+
   const STEPS = ['datas', 'pagamento', 'confirmando', 'concluido'];
   const stepIdx = STEPS.indexOf(step);
 
   return (
-    <div className={styles.backdrop} onClick={step === 'concluido' ? onClose : undefined}>
+    <div className={styles.backdrop} onClick={(step === 'concluido' || step === 'recusado') ? onClose : undefined}>
       <div className={styles.modal} onClick={e => e.stopPropagation()}>
         <button className={styles.btnFechar} onClick={onClose}>✕</button>
 
-        {step !== 'concluido' && (
+        {step !== 'concluido' && step !== 'recusado' && (
           <div className={styles.progressBar}>
             {['Datas', 'Pagamento', 'Confirmando'].map((label, i) => (
               <div key={i} className={`${styles.progressStep} ${i <= stepIdx ? styles.progressStepActive : ''}`}>
@@ -344,8 +390,9 @@ export default function ReservaModal({ quarto, datasIniciais, onClose, onReserva
 
         {step === 'datas' && <StepDatas quarto={quarto} onConfirmar={handleDatas} />}
         {step === 'pagamento' && <StepPagamento quarto={quarto} datas={datas} onPagar={handlePagamento} processando={processando} />}
-        {step === 'confirmando' && <StepConfirmando reservaId={reservaId} onConfirmado={handleConfirmado} />}
+        {step === 'confirmando' && <StepConfirmando reservaId={reservaId} metodo={metodo} onConfirmado={handleConfirmado} onRecusado={handleRecusado} />}
         {step === 'concluido' && <StepConcluido reserva={reservaFinal} quarto={quarto} datas={datas} onFechar={onClose} />}
+        {step === 'recusado' && <StepRecusado motivo={recusa.motivo} timeout={recusa.timeout} onFechar={onClose} />}
       </div>
     </div>
   );
