@@ -504,3 +504,54 @@ alterado de `hotel_pagamento_secret` para `segredo`) → um token de login vale 
 5. Os `.env` de Reserva/Quarto/Pagamento em Downloads tinham a senha do banco com `@` não-escapado
    (`senac@12938`); o do Cliente estava certo (`senac%4012938`). Como os serviços funcionam, o env real
    (Infisical) deve estar correto — mas conferir se algum der erro de conexão.
+
+---
+
+# AMANHÃ NA FACULDADE — commit/push e deploy
+
+## Status de push por repositório (em 2026-06-22)
+| Repo | Commits da sessão | Push |
+|---|---|---|
+| frontHotelaria | foto real, fallback img, CPF/telefone, response interceptor 401/403, pagamento token, este docs | ✅ pushado |
+| PI_hotel_cliente | usuario_role/JWT, normalização CPF/telefone, **auth+dono/admin** (`67c41b7`) | ✅ pushado |
+| PI_Hotel_Reserva | overbooking, fix consumer, reset-reservas, **auth nas rotas** (`54f8ef0`) | ✅ pushado |
+| api_hotel_pagamento | gateway assíncrono, máscara/hash cartão, **religar auth** (`d0f5e90`) | ✅ pushado |
+| **pi_hotel_quarto** | seed/reset, controller fotos, **auth (admin nas escritas)**, CONTEXTO.md | ❌ **PENDENTE (403)** |
+
+## O que falta fazer amanhã
+1. **Push do `pi_hotel_quarto`** (4 commits locais: `1631a18`, `dae6a33`, `76c0ab4`, `6fa7e37`).
+   - Se estiver **nesta mesma máquina**: `cd R:\faculdade\pi_hotel_quarto && git push origin main`
+     (precisa de conta com escrita — pedir à `claracatarin4` para adicionar o Ruan como colaborador).
+   - Se estiver em **outra máquina**: o repo no GitHub NÃO tem essas mudanças. Reproduzir usando o
+     `pi_hotel_quarto/CONTEXTO.md` (está só no local) OU a cópia abaixo (recuperável daqui).
+2. **Confirmar `JWT_SECRET=segredo`** nos 4 serviços (Infisical) — Pagamento foi alterado, precisa redeploy.
+3. **A conta Admin precisa ter `usuario_role='Admin'`** no banco (tabela `usuario`), senão admin de quarto dá 403.
+4. **Build no Jenkins** dos serviços alterados + **`iisreset`**.
+5. Testar: login Admin → criar/editar quarto (ok); cliente comum chamar `/cliente/1` de outro → 403;
+   reserva → pagamento aprovado/recusado; `/admin/quartos` por não-admin → bloqueado.
+
+## Cópia recuperável das mudanças do MS Quarto (caso o local se perca)
+**Novo `src/middlewares/auth.js`** (idêntico ao do MS Cliente):
+```js
+const jwt = require('jsonwebtoken');
+function auth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) { res.send(401, { erro: 'Token não fornecido.' }); return next(false); }
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') { res.send(401, { erro: 'Token com formato inválido.' }); return next(false); }
+  jwt.verify(parts[1], process.env.JWT_SECRET, (err, decoded) => {
+    if (err) { res.send(401, { erro: 'Token inválido ou expirado.' }); return next(false); }
+    req.user = decoded; return next();
+  });
+}
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'Admin') { res.send(403, { erro: 'Acesso negado: requer perfil Admin.' }); return next(false); }
+  return next();
+}
+module.exports = { auth, requireAdmin };
+```
+**Rotas** (`quarto.routes.js`, `tipoQuarto.routes.js`, `foto.routes.js`): no topo
+`const { auth, requireAdmin } = require('../middlewares/auth');`; manter os `GET` públicos e
+colocar `auth, requireAdmin` antes do controller em todo `POST/PUT/PATCH/DELETE`. Em
+`quarto.routes.js`, registrar `/api/quartos/reservas` ANTES de `/api/quartos/:id`.
+`jsonwebtoken` já está no package.json do Quarto.
