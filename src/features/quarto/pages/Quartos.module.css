@@ -61,6 +61,10 @@
 .btnMiniDanger { background: var(--bg-input); border: 1px solid var(--border); color: #ff6b6b;
   padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; transition: .2s; }
 .btnMiniDanger:hover { border-color: #ff6b6b; background: rgba(255,107,107,0.1); }
+.btnMiniWarn { background: var(--bg-input); border: 1px solid var(--border); color: #ffb400;
+  padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; transition: .2s; }
+.btnMiniWarn:hover { border-color: #ffb400; background: rgba(255,180,0,0.1); }
+.btnMiniWarn:disabled { opacity: .6; cursor: not-allowed; }
 .btnDanger { background: #ff6b6b; border: none; color: #fff; padding: 6px 14px;
   border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
 .btnDanger:disabled { opacity: .6; }

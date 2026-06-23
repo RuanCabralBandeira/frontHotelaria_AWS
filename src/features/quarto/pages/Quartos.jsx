@@ -1,14 +1,37 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { listarQuartos, excluirQuarto } from '../services/QuartoService';
+import { listarQuartos, excluirQuarto, editarParcialQuarto } from '../services/QuartoService';
+import { listarReservas } from '../../../services/reservaService';
 import styles from './Quartos.module.css';
 
-const STATUS_MAP = {
-  1: { label: 'Disponível', cls: 'avail' },
-  2: { label: 'Ocupado',    cls: 'busy'  },
-  3: { label: 'Manutenção', cls: 'maint' },
+const BADGE = {
+  disponivel: { label: 'Disponível', cls: 'avail' },
+  ocupado:    { label: 'Ocupado',    cls: 'busy'  },
+  manutencao: { label: 'Manutenção', cls: 'maint' },
 };
+
+const hoje = () => new Date().toISOString().split('T')[0];
+const dateOnly = (s) => (s || '').split('T')[0];
+
+// Quarto está ocupado HOJE se houver reserva ativa (status 1 ou 2) cobrindo a data atual.
+function ocupadoHoje(quartoId, reservas) {
+  const h = hoje();
+  return reservas.some(
+    (r) =>
+      r.quarto_id === quartoId &&
+      [1, 2].includes(r.reserva_status) &&
+      dateOnly(r.reserva_checkin) <= h &&
+      h < dateOnly(r.reserva_checkout)
+  );
+}
+
+// Status "efetivo": manutenção (manual) > ocupado (manual ou por reserva de hoje) > disponível.
+function statusEfetivo(quarto, reservas) {
+  if (quarto.status === 3) return 'manutencao';
+  if (quarto.status === 2 || ocupadoHoje(quarto.id, reservas)) return 'ocupado';
+  return 'disponivel';
+}
 
 function fotoSrc(foto) {
   if (!foto) return null;
@@ -20,16 +43,22 @@ export default function Quartos() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [quartos, setQuartos] = useState([]);
+  const [reservas, setReservas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [mudandoStatus, setMudandoStatus] = useState(null);
 
   const fetch = async () => {
     setLoading(true); setError('');
     try {
-      const data = await listarQuartos();
-      setQuartos(Array.isArray(data) ? data : []);
+      const [quartosData, reservasData] = await Promise.all([
+        listarQuartos(),
+        listarReservas().catch(() => []),
+      ]);
+      setQuartos(Array.isArray(quartosData) ? quartosData : []);
+      setReservas(Array.isArray(reservasData) ? reservasData : []);
     } catch {
       setError('Não foi possível carregar os quartos.');
     } finally {
@@ -52,12 +81,27 @@ export default function Quartos() {
     }
   };
 
+  // Coloca em manutenção (status 3) ou reativa (status 1). Em manutenção, some da Home (que filtra status 1).
+  const toggleManutencao = async (q) => {
+    const novo = q.status === 3 ? 1 : 3;
+    setMudandoStatus(q.id); setError('');
+    try {
+      await editarParcialQuarto(q.id, { status: novo });
+      setQuartos((qs) => qs.map((x) => (x.id === q.id ? { ...x, status: novo } : x)));
+    } catch {
+      setError('Não foi possível alterar o status do quarto.');
+    } finally {
+      setMudandoStatus(null);
+    }
+  };
+
   const handleLogout = () => { logout(); navigate('/'); };
 
+  const efetivos = quartos.map((q) => statusEfetivo(q, reservas));
   const total       = quartos.length;
-  const disponiveis = quartos.filter((q) => q.status === 1).length;
-  const ocupados    = quartos.filter((q) => q.status === 2).length;
-  const manutencao  = quartos.filter((q) => q.status === 3).length;
+  const disponiveis = efetivos.filter((s) => s === 'disponivel').length;
+  const ocupados    = efetivos.filter((s) => s === 'ocupado').length;
+  const manutencao  = efetivos.filter((s) => s === 'manutencao').length;
 
   return (
     <div className={styles.wrapper}>
@@ -102,7 +146,7 @@ export default function Quartos() {
             </div>
             <div className={styles.statCard}>
               <span className={`${styles.statVal} ${styles.statBusy}`}>{ocupados}</span>
-              <span className={styles.statLabel}>Ocupados</span>
+              <span className={styles.statLabel}>Ocupados hoje</span>
             </div>
             <div className={styles.statCard}>
               <span className={`${styles.statVal} ${styles.statMaint}`}>{manutencao}</span>
@@ -149,17 +193,15 @@ export default function Quartos() {
               </thead>
               <tbody>
                 {quartos.map((q) => {
-                  const st = STATUS_MAP[q.status] || STATUS_MAP[1];
+                  const ef = statusEfetivo(q, reservas);
+                  const st = BADGE[ef];
+                  const emManutencao = q.status === 3;
                   const primeiraFoto = q.fotos?.[0];
                   return (
                     <tr key={q.id}>
                       <td className={styles.tdFoto}>
                         {primeiraFoto ? (
-                          <img
-                            className={styles.thumb}
-                            src={fotoSrc(primeiraFoto)}
-                            alt="foto"
-                          />
+                          <img className={styles.thumb} src={fotoSrc(primeiraFoto)} alt="foto" />
                         ) : (
                           <div className={styles.thumbPlaceholder}>◈</div>
                         )}
@@ -176,11 +218,7 @@ export default function Quartos() {
                         {confirm === q.id ? (
                           <span className={styles.confirmRow}>
                             <span className={styles.confirmTxt}>Excluir?</span>
-                            <button
-                              className={styles.btnDanger}
-                              disabled={deleting === q.id}
-                              onClick={() => handleDelete(q.id)}
-                            >
+                            <button className={styles.btnDanger} disabled={deleting === q.id} onClick={() => handleDelete(q.id)}>
                               {deleting === q.id ? '…' : 'Sim'}
                             </button>
                             <button className={styles.btnMini} onClick={() => setConfirm(null)}>Não</button>
@@ -189,6 +227,14 @@ export default function Quartos() {
                           <span className={styles.actionsCell}>
                             <button className={styles.btnMini} onClick={() => navigate(`/admin/quartos/${q.id}/editar`)}>
                               Editar
+                            </button>
+                            <button
+                              className={emManutencao ? styles.btnMini : styles.btnMiniWarn}
+                              disabled={mudandoStatus === q.id}
+                              onClick={() => toggleManutencao(q)}
+                              title={emManutencao ? 'Reativar (volta a aparecer para reserva)' : 'Colocar em manutenção (some da listagem de reserva)'}
+                            >
+                              {mudandoStatus === q.id ? '…' : emManutencao ? 'Reativar' : 'Manutenção'}
                             </button>
                             <button className={styles.btnMiniDanger} onClick={() => setConfirm(q.id)}>
                               Excluir
