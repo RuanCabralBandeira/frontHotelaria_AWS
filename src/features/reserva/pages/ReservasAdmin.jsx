@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { listarReservas } from '../../../services/reservaService';
+import { listarReservas, atualizarReserva } from '../../../services/reservaService';
 import { listarQuartos } from '../../quarto/services/QuartoService';
 import { listarClientes } from '../../../services/clienteService';
 import { maskCPF, maskTelefone } from '../../../utils/validators';
@@ -55,6 +55,9 @@ export default function ReservasAdmin() {
   const [filtroStatus, setFiltroStatus] = useState('');
   const [busca, setBusca] = useState('');
   const [selecionada, setSelecionada] = useState(null);
+  const [confirmarCancel, setConfirmarCancel] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+  const [cancelErro, setCancelErro] = useState('');
 
   const carregar = async () => {
     setLoading(true); setError('');
@@ -77,6 +80,23 @@ export default function ReservasAdmin() {
   useEffect(() => { carregar(); }, []);
 
   const handleLogout = () => { logout(); navigate('/'); };
+
+  const abrirModal = (r) => { setSelecionada(r); setConfirmarCancel(false); setCancelErro(''); };
+  const fecharModal = () => { setSelecionada(null); setConfirmarCancel(false); setCancelErro(''); };
+
+  const cancelarReserva = async (reservaId) => {
+    setCancelando(true); setCancelErro('');
+    try {
+      await atualizarReserva(reservaId, { reserva_status: 3 });
+      setReservas(prev => prev.map(r => r.reserva_id === reservaId ? { ...r, reserva_status: 3 } : r));
+      setSelecionada(prev => ({ ...prev, reserva_status: 3 }));
+      setConfirmarCancel(false);
+    } catch {
+      setCancelErro('Não foi possível cancelar. Tente novamente.');
+    } finally {
+      setCancelando(false);
+    }
+  };
 
   const nomeCliente = (id) => clienteMap[id]?.cliente_nome || (id ? `Cliente #${id}` : '—');
   const labelQuarto = (id) => {
@@ -233,7 +253,7 @@ export default function ReservasAdmin() {
                   const st = RESERVA_STATUS[r.reserva_status] || { label: `?(${r.reserva_status})`, cls: 'pend' };
                   const per = periodo(r);
                   return (
-                    <tr key={r.reserva_id} className={styles.rowClick} onClick={() => setSelecionada(r)}>
+                    <tr key={r.reserva_id} className={styles.rowClick} onClick={() => abrirModal(r)}>
                       <td className={styles.numero}>#{r.reserva_id}</td>
                       <td>{nomeCliente(r.cliente_id)}</td>
                       <td className={styles.quarto}>{labelQuarto(r.quarto_id)}</td>
@@ -262,9 +282,9 @@ export default function ReservasAdmin() {
         const pgCls = PAGAMENTO_CLS[r.pagamento_status] || 'pgAguard';
         const pgLabel = PAGAMENTO_STATUS[r.pagamento_status] ?? 'Desconhecido';
         return (
-          <div className={styles.modalBackdrop} onClick={() => setSelecionada(null)}>
+          <div className={styles.modalBackdrop} onClick={fecharModal}>
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-              <button className={styles.modalClose} onClick={() => setSelecionada(null)}>✕</button>
+              <button className={styles.modalClose} onClick={fecharModal}>✕</button>
 
               <div className={styles.modalHead}>
                 <div>
@@ -310,6 +330,35 @@ export default function ReservasAdmin() {
                   <div className={styles.infoItem}><span className={styles.infoLabel}>Total estimado</span><span className={styles.infoVal}>{total != null ? `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}</span></div>
                 </div>
               </div>
+
+              {/* Cancelamento */}
+              {r.reserva_status !== 3 && (
+                <div className={styles.cancelSection}>
+                  {!confirmarCancel ? (
+                    <button className={styles.btnCancelar} onClick={() => setConfirmarCancel(true)}>
+                      Cancelar reserva
+                    </button>
+                  ) : (
+                    <div className={styles.confirmBox}>
+                      <p className={styles.confirmText}>
+                        Confirmar cancelamento da <strong>Reserva #{r.reserva_id}</strong>?
+                        {r.pagamento_status === 0 && (
+                          <span className={styles.confirmHint}> O pagamento ainda está pendente.</span>
+                        )}
+                      </p>
+                      {cancelErro && <p className={styles.cancelErro}>{cancelErro}</p>}
+                      <div className={styles.confirmActions}>
+                        <button className={styles.btnVoltarCancel} onClick={() => { setConfirmarCancel(false); setCancelErro(''); }}>
+                          Voltar
+                        </button>
+                        <button className={styles.btnConfirmarCancel} onClick={() => cancelarReserva(r.reserva_id)} disabled={cancelando}>
+                          {cancelando ? 'Cancelando…' : 'Sim, cancelar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         );

@@ -108,6 +108,66 @@
 .infoLabel { font-size: 12px; color: var(--text-muted); }
 .infoVal { font-size: 14px; color: var(--text-primary); }
 
+/* ── Cancelamento ── */
+.cancelSection {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.btnCancelar {
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(255,107,107,0.4);
+  color: #ff6b6b;
+  padding: 11px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.btnCancelar:hover { background: rgba(255,107,107,0.08); border-color: #ff6b6b; }
+.confirmBox {
+  background: rgba(255,107,107,0.06);
+  border: 1px solid rgba(255,107,107,0.22);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  animation: modalIn .2s ease forwards;
+}
+.confirmText { font-size: 14px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5; }
+.confirmHint { color: #ffb400; }
+.cancelErro { font-size: 13px; color: #ff6b6b; margin-bottom: 10px; }
+.confirmActions { display: flex; gap: 10px; }
+.btnVoltarCancel {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.btnVoltarCancel:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.btnConfirmarCancel {
+  flex: 2;
+  background: #ff6b6b;
+  border: none;
+  color: #fff;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.btnConfirmarCancel:hover:not(:disabled) { background: #e05555; }
+.btnConfirmarCancel:disabled { opacity: 0.6; cursor: not-allowed; }
+
 @media (max-width: 860px) {
   .nav { padding: 16px 20px; flex-wrap: wrap; gap: 12px; }
   .navLinks { order: 3; width: 100%; }
