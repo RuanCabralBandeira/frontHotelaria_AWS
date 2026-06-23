@@ -3,21 +3,52 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import styles from './Contato.module.css';
 
+// 👇 COLE AQUI sua Access Key do Web3Forms (grátis em https://web3forms.com — informe seu e-mail
+//    pessoal e ele te envia a key na hora). As mensagens chegam nesse e-mail, sem banco de dados.
+const WEB3FORMS_ACCESS_KEY = '8a88be72-03a7-4fcc-bf09-c7bf4538c5f8';
+
 export default function Contato() {
   const navigate = useNavigate();
   const { user, logout, isAdmin } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [form, setForm] = useState({ nome: '', email: '', mensagem: '' });
   const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setEnviado(true);
+    setErro(''); setEnviando(true);
+    try {
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_ACCESS_KEY,
+          subject: `Contato Hotel Luxe — ${form.nome}`,
+          from_name: 'Hotel Luxe',
+          name: form.nome,
+          email: form.email,           // vira o "responder para" do e-mail
+          message: form.mensagem,
+          conta_logada: user?.login || '(visitante não logado)',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEnviado(true);
+      } else {
+        setErro(data.message || 'Não foi possível enviar. Tente novamente.');
+      }
+    } catch {
+      setErro('Falha de conexão ao enviar a mensagem.');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -139,7 +170,12 @@ export default function Contato() {
                 onChange={e => setForm({ ...form, mensagem: e.target.value })}
                 required
               />
-              <button type="submit" className={styles.btnSubmit}>Enviar mensagem</button>
+              {erro && (
+                <p style={{ color: '#ff6b6b', fontSize: 13, margin: '4px 0 0' }}>{erro}</p>
+              )}
+              <button type="submit" className={styles.btnSubmit} disabled={enviando}>
+                {enviando ? 'Enviando…' : 'Enviar mensagem'}
+              </button>
             </form>
           ) : (
             <div className={styles.sucessoCard}>
