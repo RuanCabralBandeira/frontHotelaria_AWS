@@ -516,18 +516,16 @@ alterado de `hotel_pagamento_secret` para `segredo`) → um token de login vale 
 | PI_hotel_cliente | usuario_role/JWT, normalização CPF/telefone, **auth+dono/admin** (`67c41b7`) | ✅ pushado |
 | PI_Hotel_Reserva | overbooking, fix consumer, reset-reservas, **auth nas rotas** (`54f8ef0`) | ✅ pushado |
 | api_hotel_pagamento | gateway assíncrono, máscara/hash cartão, **religar auth** (`d0f5e90`) | ✅ pushado |
-| **pi_hotel_quarto** | seed/reset, controller fotos, **auth (admin nas escritas)**, CONTEXTO.md | ❌ **PENDENTE (403)** |
+| **pi_hotel_quarto** | seed/reset, controller fotos, **auth (admin nas escritas)**, CONTEXTO.md | ✅ pushado (`6fa7e37`) |
 
-## O que falta fazer amanhã
-1. **Push do `pi_hotel_quarto`** (4 commits locais: `1631a18`, `dae6a33`, `76c0ab4`, `6fa7e37`).
-   - Se estiver **nesta mesma máquina**: `cd R:\faculdade\pi_hotel_quarto && git push origin main`
-     (precisa de conta com escrita — pedir à `claracatarin4` para adicionar o Ruan como colaborador).
-   - Se estiver em **outra máquina**: o repo no GitHub NÃO tem essas mudanças. Reproduzir usando o
-     `pi_hotel_quarto/CONTEXTO.md` (está só no local) OU a cópia abaixo (recuperável daqui).
-2. **Confirmar `JWT_SECRET=segredo`** nos 4 serviços (Infisical) — Pagamento foi alterado, precisa redeploy.
-3. **A conta Admin precisa ter `usuario_role='Admin'`** no banco (tabela `usuario`), senão admin de quarto dá 403.
-4. **Build no Jenkins** dos serviços alterados + **`iisreset`**.
-5. Testar: login Admin → criar/editar quarto (ok); cliente comum chamar `/cliente/1` de outro → 403;
+> ✅ **Todos os 5 repos estão pushados no GitHub** (o Ruan virou colaborador de todos). Não há mais nada
+> pendente de commit/push — amanhã é só **deploy + teste**.
+
+## O que falta fazer amanhã (só deploy/teste)
+1. **Confirmar `JWT_SECRET=segredo`** nos 4 serviços (Infisical) — Pagamento foi alterado, precisa redeploy.
+2. **A conta Admin precisa ter `usuario_role='Admin'`** no banco (tabela `usuario`), senão admin de quarto dá 403.
+3. **Build no Jenkins** dos serviços (front + 4 MS) + **`iisreset`** depois de cada redeploy.
+4. Testar: login Admin → criar/editar quarto (ok); cliente comum chamar `/cliente/1` de outro → 403;
    reserva → pagamento aprovado/recusado; `/admin/quartos` por não-admin → bloqueado.
 
 ## Cópia recuperável das mudanças do MS Quarto (caso o local se perca)
