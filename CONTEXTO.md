@@ -258,8 +258,8 @@ src/
   ⚠ `reserva_id` é **obrigatório** — campo NOT NULL no banco, adicionado ao schema em 2026-06-18
 - `POST /pagamentos/processar` — `{ pagamento_id, reserva_id, metodo, dados? }` → 202 `{ aprovado, motivo, estimativa_ms }`
   (gateway simulado; após o timer publica PAGAMENTO_APROVADO/RECUSADO na fila `pagamento_queue`). Ver "Sessão 2026-06-22".
-- Token próprio: `VITE_PAGAMENTO_TOKEN` no docker-compose do front (ou token hardcoded no pagamentoService.js).
-  ⚠ Hoje o middleware `auth` (src/middlewares/auth.js) está **desligado** (passa direto) — token não é validado.
+- Auth: o middleware `auth` foi **religado** (valida Bearer JWT com `JWT_SECRET=segredo`). O front envia
+  o token do usuário logado (não há mais token fixo no pagamentoService).
 
 ---
 
@@ -553,3 +553,29 @@ module.exports = { auth, requireAdmin };
 colocar `auth, requireAdmin` antes do controller em todo `POST/PUT/PATCH/DELETE`. Em
 `quarto.routes.js`, registrar `/api/quartos/reservas` ANTES de `/api/quartos/:id`.
 `jsonwebtoken` já está no package.json do Quarto.
+
+---
+
+# Sessão 2026-06-22 (continuação) — trabalho da equipe (pull)
+Após meus commits de auth, a equipe empurrou (tudo já no GitHub, sem conflito):
+
+### Front (`frontHotelaria`)
+- Novas páginas **Contato** (`/contato`) e **Serviços** (`/servicos`) + correção da navegação da navbar
+  e da `MinhasReservas`; padronização do tamanho do logo.
+- **Cancelar reserva no painel admin**: no `ReservasAdmin.jsx`, o modal de detalhes agora permite
+  cancelar (`atualizarReserva(id, { reserva_status: 3 })`).
+
+### MS Reserva (`PI_Hotel_Reserva`) — peça que FALTAVA pro auth funcionar ponta a ponta ✅
+- **Encaminha o JWT do usuário nas chamadas service-to-service**: `cliente.service.validarCliente` e
+  `quarto.service.verificarDisponibilidade` agora recebem e repassam o `Authorization` do request
+  (`headers: { Authorization: authHeader }`). Sem isso, ao criar reserva o MS Reserva chamaria o
+  MS Cliente (`GET /:id`, protegido) sem token → 401. Commits `6290ff8`, `14b2ff9`, `c1782ba`.
+- Como o token repassado é o do próprio cliente logado, o check de "dono" no MS Cliente passa.
+
+### MS Pagamento (`api_hotel_pagamento`)
+- `feat: salvar reserva_id em tipo_pagamento e timer de confirmação de boleto` (`798698e`) e
+  `fix: falha intermitente no pagamento por boleto` (`dd0dc88`).
+
+### Estado geral
+- Os 5 repos estão **sincronizados com o GitHub, sem conflito**. Falta só **deploy no Jenkins + `iisreset`**
+  e os itens do "CHECKLIST PRA TESTAR NO JENKINS" acima (principalmente: conta Admin com `usuario_role='Admin'`).
