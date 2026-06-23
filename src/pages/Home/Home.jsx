@@ -251,8 +251,8 @@ export default function Home() {
         <div className={styles.navCenter}>
           <button className={styles.navLink}>Quartos</button>
           <button className={styles.navLink}>Reservas</button>
-          <button className={styles.navLink}>Serviços</button>
-          <button className={styles.navLink}>Contato</button>
+          <button className={styles.navLink} onClick={() => navigate('/servicos')}>Serviços</button>
+          <button className={styles.navLink} onClick={() => navigate('/contato')}>Contato</button>
         </div>
 
         <div className={styles.navRight}>

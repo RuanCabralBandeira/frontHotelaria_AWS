@@ -10,6 +10,8 @@ import RegisterQuarto from '../features/quarto/pages/RegisterQuarto';
 import TiposQuarto from '../features/quarto/pages/TiposQuarto';
 import ReservasAdmin from '../features/reserva/pages/ReservasAdmin';
 import MinhasReservas from '../pages/MinhasReservas/MinhasReservas';
+import Servicos from '../pages/Servicos/Servicos';
+import Contato from '../pages/Contato/Contato';
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -41,6 +43,9 @@ export default function AppRoutes() {
         <Route path="/admin/quartos/:id/editar" element={<AdminRoute><RegisterQuarto /></AdminRoute>} />
         <Route path="/admin/tipos-quarto" element={<AdminRoute><TiposQuarto /></AdminRoute>} />
         <Route path="/admin/reservas" element={<AdminRoute><ReservasAdmin /></AdminRoute>} />
+        {/* Públicas */}
+        <Route path="/servicos" element={<Servicos />} />
+        <Route path="/contato" element={<Contato />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
