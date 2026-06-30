@@ -1,19 +1,19 @@
 import axios from 'axios';
 
 export const usuarioApi = axios.create({
-  baseURL: import.meta.env.VITE_USUARIO_API || 'http://academico3.rj.senac.br/20261prj5/hotel/cliente',
+  baseURL: import.meta.env.VITE_USUARIO_API,
 });
 
 export const quartoApi = axios.create({
-  baseURL: import.meta.env.VITE_QUARTO_API || 'http://academico3.rj.senac.br/20261prj5/hotel/quarto',
+  baseURL: import.meta.env.VITE_QUARTO_API,
 });
 
 export const reservaApi = axios.create({
-  baseURL: import.meta.env.VITE_RESERVA_API || 'http://academico3.rj.senac.br/20261prj5/hotel/reserva',
+  baseURL: import.meta.env.VITE_RESERVA_API,
 });
 
 export const pagamentoApi = axios.create({
-  baseURL: import.meta.env.VITE_PAGAMENTO_API || 'http://academico3.rj.senac.br/20261prj5/hotel/pagamento',
+  baseURL: import.meta.env.VITE_PAGAMENTO_API,
 });
 
 // Request: injeta o JWT do usuário logado em todas as chamadas
@@ -43,7 +43,7 @@ const addResponseInterceptor = (instance) => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         if (!window.location.pathname.endsWith('/login')) {
-          window.location.href = '/20261prj5/hotel/login';
+          window.location.href = '/login';
         }
       }
       return Promise.reject(error);

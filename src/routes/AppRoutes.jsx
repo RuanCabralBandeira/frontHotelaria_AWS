@@ -28,7 +28,7 @@ function AdminRoute({ children }) {
 
 export default function AppRoutes() {
   return (
-    <BrowserRouter basename="/20261prj5/hotel">
+    <BrowserRouter basename="/">
       <Routes>
         <Route path="/" element={<Menu />} />
         <Route path="/login" element={<Login />} />
