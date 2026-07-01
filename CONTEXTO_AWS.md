@@ -27,16 +27,120 @@ Todos os repos abaixo estão em `RuanCabralBandeira` com as mudanças AWS já ap
 | `PI_Hotel_Reserva/Dockerfile` | CMD agora roda `prisma db push` antes de iniciar o servidor |
 | `pi_hotel_quarto/Dockerfile` | Substituído `npm run dev` (nodemon) por `node src/server.js`; adicionado `prisma db push` |
 
-**Como clonar os repos AWS no Cloud9:**
+## Ambiente de trabalho — como executar os comandos deste guia
+
+> **Cloud9 não é necessário.** Use uma das opções abaixo. A EC2 de builds (Fase 0.5) é a opção recomendada — ela resolve tudo incluindo Docker.
+
+### Opção A — EC2 de builds (recomendada)
+
+Criamos uma EC2 separada para rodar todos os comandos. Ela fica no ar só durante o deploy. Veja a **Fase 0.5** logo abaixo.
+
+### Opção B — AWS CloudShell (sem Docker)
+
+O CloudShell é um terminal no próprio console AWS — sem instalação, sem configuração.
+
+1. No console AWS, clica no ícone de terminal `>_` no canto superior direito
+2. Uma janela de terminal abre direto no browser
+3. AWS CLI já está instalado e autenticado
+
+**Limitação:** o CloudShell **não tem Docker**. Use para criar ECR repos, registrar task definitions, criar ECS services, ALB, etc. Para o `docker build` e `docker push`, use a EC2 da Fase 0.5 ou a máquina local.
+
+### Opção C — Máquina local
+
+Se você tiver Docker Desktop e AWS CLI instalados no seu computador:
+
 ```bash
-cd ~/environment
+# Configura as credenciais do lab (pega em AWS Details → Show)
+aws configure
+# AWS Access Key ID: (cole aqui)
+# AWS Secret Access Key: (cole aqui)
+# Default region name: us-east-1
+# Default output format: json
+```
+
+> Credenciais do lab expiram a cada sessão — precisa reconfigurar quando o lab reiniciar.
+
+---
+
+## FASE 0.5 — EC2 de Builds (substituto do Cloud9)
+
+> Crie esta EC2 **antes de qualquer outra fase**. Ela serve como ambiente de trabalho para todos os comandos: git clone, docker build, docker push, aws cli.
+
+### Criar a EC2 de builds
+
+1. Console AWS → **EC2 → Instances → Launch instances**
+2. Preenche:
+
+```
+Name: hotel-builder
+AMI: Amazon Linux 2023 AMI
+Instance type: t3.micro
+Key pair: vockey
+```
+
+**Network settings:**
+```
+VPC: LabVPC
+Subnet: Public Subnet 1
+Auto-assign public IP: Enable
+Security group: Create new → nome: builder-sg
+Inbound: SSH porta 22, source 0.0.0.0/0
+```
+
+Clica em **Launch instance**.
+
+### Conectar pela EC2 Instance Connect (sem SSH, direto no browser)
+
+1. Console EC2 → seleciona a instância `hotel-builder`
+2. Clica em **Connect** (botão laranja)
+3. Escolhe a aba **EC2 Instance Connect**
+4. Clica em **Connect**
+
+Uma janela de terminal abre no browser — sem precisar de cliente SSH, sem configurar chave.
+
+### Preparar o ambiente
+
+Cole esses comandos no terminal que abriu:
+
+```bash
+# Instala Docker
+sudo dnf install -y docker git
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ec2-user
+
+# Fecha e reabre a conexão Instance Connect para aplicar o grupo docker
+# (ou use sudo antes de cada docker command)
+
+# Verifica
+docker --version
+aws --version   # já vem instalado na Amazon Linux 2023
+```
+
+### Autenticar o Docker no ECR e clonar os repos
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION="us-east-1"
+
+# Login no ECR
+aws ecr get-login-password --region $REGION | \
+  docker login --username AWS \
+  --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+# Clonar os repos AWS
+mkdir -p ~/hotel && cd ~/hotel
 
 git clone https://github.com/RuanCabralBandeira/frontHotelaria_AWS.git        frontHotelaria
 git clone https://github.com/RuanCabralBandeira/PI_hotel_cliente_AWS.git      PI_hotel_cliente
 git clone https://github.com/RuanCabralBandeira/PI_Hotel_Reserva_AWS.git      PI_Hotel_Reserva
 git clone https://github.com/RuanCabralBandeira/pi_hotel_quarto_AWS.git       pi_hotel_quarto
 git clone https://github.com/RuanCabralBandeira/api_hotel_pagamento_AWS.git   api_hotel_pagamento
+
+mkdir -p ~/hotel/hotel-deploy
 ```
+
+> A partir daqui, todos os comandos deste guia são executados nessa EC2. Substitui `~/hotel` por `~/hotel` nos comandos das próximas fases.
 
 ---
 
@@ -72,7 +176,7 @@ Na AWS **não existe Jenkins** rodando antes do container. O ECS simplesmente so
 
 Os tokens já estão nos Jenkinsfiles de cada MS. Vamos usá-los para ver os valores reais.
 
-**No Cloud9 (ou no terminal do seu computador), execute um comando por MS:**
+**Na EC2 de builds (ou CloudShell), execute um comando por MS:**
 
 ```bash
 # MS Cliente — exibe todos os segredos do path /cliente
@@ -427,10 +531,10 @@ Se aparecer o painel com **Overview** e **Connections**, o RabbitMQ está funcio
 
 ### 2.1 Verificar conectividade (opcional mas recomendado)
 
-Antes de prosseguir, confirma que o banco responde pelo Cloud9:
+Antes de prosseguir, confirma que o banco responde pela EC2 de builds:
 
 ```bash
-# Instala o cliente MySQL no Cloud9 se necessário
+# Instala o cliente MySQL se necessário
 sudo dnf install -y mysql
 
 # Testa conexão com o banco do MS Cliente
@@ -457,7 +561,7 @@ O `DATABASE_URL` de cada MS já está definido nos task definitions da Fase 3 co
 
 ### 3.1 Criar os repositórios ECR
 
-**No Cloud9, executa:**
+**Na EC2 de builds, executa:**
 
 ```bash
 # Pega o ID da conta AWS automaticamente
@@ -498,7 +602,7 @@ Deve aparecer: `Login Succeeded`
 
 **Front-end:**
 ```bash
-cd ~/environment/frontHotelaria
+cd ~/hotel/frontHotelaria
 
 docker build --tag hotel-front .
 
@@ -511,7 +615,7 @@ docker push \
 
 **MS Cliente:**
 ```bash
-cd ~/environment/PI_hotel_cliente
+cd ~/hotel/PI_hotel_cliente
 
 docker build --tag hotel-cliente .
 
@@ -524,7 +628,7 @@ docker push \
 
 **MS Reserva:**
 ```bash
-cd ~/environment/PI_Hotel_Reserva
+cd ~/hotel/PI_Hotel_Reserva
 
 docker build --tag hotel-reserva .
 
@@ -537,7 +641,7 @@ docker push \
 
 **MS Quarto:**
 ```bash
-cd ~/environment/pi_hotel_quarto
+cd ~/hotel/pi_hotel_quarto
 
 docker build --tag hotel-quarto .
 
@@ -550,7 +654,7 @@ docker push \
 
 **MS Pagamento:**
 ```bash
-cd ~/environment/api_hotel_pagamento
+cd ~/hotel/api_hotel_pagamento
 
 docker build --tag hotel-pagamento .
 
@@ -593,8 +697,8 @@ aws logs create-log-group --log-group-name /ecs/hotel-pagamento
 ### 4.2 Criar a pasta de deploy
 
 ```bash
-mkdir -p ~/environment/hotel-deploy
-cd ~/environment/hotel-deploy
+mkdir -p ~/hotel/hotel-deploy
+cd ~/hotel/hotel-deploy
 ```
 
 ### 4.3 Preencher os valores reais
@@ -615,7 +719,7 @@ Antes de criar os arquivos, você precisa ter em mãos apenas **2 valores** da A
 > **IMPORTANTE:** O DNS do ALB ainda não existe neste momento. Você vai criar o ALB na Fase 6 e depois voltar aqui para atualizar o valor de `ALB_DNS`.
 
 ```bash
-cat > ~/environment/hotel-deploy/taskdef-front.json << 'EOF'
+cat > ~/hotel/hotel-deploy/taskdef-front.json << 'EOF'
 {
   "family": "hotel-front",
   "networkMode": "awsvpc",
@@ -660,7 +764,7 @@ EOF
 > Todas as variáveis vêm do `dev5.env`. `DATABASE_URL`, `RABBITMQ_URL` e as URLs de serviço são substituídas pelos valores AWS.
 
 ```bash
-cat > ~/environment/hotel-deploy/taskdef-cliente.json << 'EOF'
+cat > ~/hotel/hotel-deploy/taskdef-cliente.json << 'EOF'
 {
   "family": "hotel-cliente",
   "networkMode": "awsvpc",
@@ -702,7 +806,7 @@ EOF
 > Variáveis do `dev9.env`. `CLIENTE_API_URL` aponta para o MS Cliente pelo ALB — a barra final é removida pelo código automaticamente. `QUARTO_API_URL` inclui o path `/api/quartos` que é como o MS Quarto expõe seus endpoints.
 
 ```bash
-cat > ~/environment/hotel-deploy/taskdef-reserva.json << 'EOF'
+cat > ~/hotel/hotel-deploy/taskdef-reserva.json << 'EOF'
 {
   "family": "hotel-reserva",
   "networkMode": "awsvpc",
@@ -743,7 +847,7 @@ EOF
 > Variáveis do `dev6.env`. O `URL_SERVICO_CLIENTE` do SENAC tinha um **typo** (`/20261prj5/cliente/reserva`) — corrigido aqui para apontar para o MS Cliente no ALB. O Dockerfile do repo AWS já foi alterado para usar `node src/server.js` com `prisma db push`.
 
 ```bash
-cat > ~/environment/hotel-deploy/taskdef-quarto.json << 'EOF'
+cat > ~/hotel/hotel-deploy/taskdef-quarto.json << 'EOF'
 {
   "family": "hotel-quarto",
   "networkMode": "awsvpc",
@@ -785,7 +889,7 @@ EOF
 > Variáveis do `dev8.env`. `AUTH_USER` e `AUTH_PASS` não aparecem no .env original — o endpoint `/auth/login` do MS Pagamento não é usado pelo front-end principal (que usa JWT via MS Cliente). Omitir essas variáveis é seguro para o demo.
 
 ```bash
-cat > ~/environment/hotel-deploy/taskdef-pagamento.json << 'EOF'
+cat > ~/hotel/hotel-deploy/taskdef-pagamento.json << 'EOF'
 {
   "family": "hotel-pagamento",
   "networkMode": "awsvpc",
@@ -838,7 +942,7 @@ ACCOUNT_ID="123456789012"    # substitui pelo ID real da sua conta
 RABBITMQ_IP="10.0.X.X"      # substitui após criar a EC2 na Fase 1
 # ────────────────────────────────────────────────────────────────────────
 
-cd ~/environment/hotel-deploy
+cd ~/hotel/hotel-deploy
 
 sed -i "s/ACCOUNT_ID/$ACCOUNT_ID/g"           taskdef-*.json
 sed -i "s/RABBITMQ_PRIVATE_IP/$RABBITMQ_IP/g" taskdef-*.json
@@ -998,7 +1102,7 @@ hotelLB-1234567890.us-east-1.elb.amazonaws.com
 ```bash
 ALB_DNS="hotelLB-1234567890.us-east-1.elb.amazonaws.com"  # coloca o DNS real aqui
 
-cd ~/environment/hotel-deploy
+cd ~/hotel/hotel-deploy
 
 sed -i "s|ALB_DNS|$ALB_DNS|g" taskdef-*.json
 ```
@@ -1018,7 +1122,7 @@ Todos devem mostrar a URL com o DNS do ALB em vez de `ALB_DNS`.
 ### 6.6 Registrar os 5 task definitions
 
 ```bash
-cd ~/environment/hotel-deploy
+cd ~/hotel/hotel-deploy
 
 aws ecs register-task-definition --cli-input-json file://taskdef-front.json
 aws ecs register-task-definition --cli-input-json file://taskdef-cliente.json
@@ -1080,7 +1184,7 @@ echo "Security Group: $SG_ID"
 **Arquivo: create-front-service.json** (usa CodeDeploy para blue/green)
 
 ```bash
-cat > ~/environment/hotel-deploy/create-front-service.json << EOF
+cat > ~/hotel/hotel-deploy/create-front-service.json << EOF
 {
   "cluster": "hotel-cluster",
   "serviceName": "front-service",
@@ -1111,7 +1215,7 @@ EOF
 **Arquivo: create-cliente-service.json** (usa rolling update simples)
 
 ```bash
-cat > ~/environment/hotel-deploy/create-cliente-service.json << EOF
+cat > ~/hotel/hotel-deploy/create-cliente-service.json << EOF
 {
   "cluster": "hotel-cluster",
   "serviceName": "cliente-service",
@@ -1142,7 +1246,7 @@ EOF
 **Arquivo: create-reserva-service.json**
 
 ```bash
-cat > ~/environment/hotel-deploy/create-reserva-service.json << EOF
+cat > ~/hotel/hotel-deploy/create-reserva-service.json << EOF
 {
   "cluster": "hotel-cluster",
   "serviceName": "reserva-service",
@@ -1173,7 +1277,7 @@ EOF
 **Arquivo: create-quarto-service.json**
 
 ```bash
-cat > ~/environment/hotel-deploy/create-quarto-service.json << EOF
+cat > ~/hotel/hotel-deploy/create-quarto-service.json << EOF
 {
   "cluster": "hotel-cluster",
   "serviceName": "quarto-service",
@@ -1204,7 +1308,7 @@ EOF
 **Arquivo: create-pagamento-service.json**
 
 ```bash
-cat > ~/environment/hotel-deploy/create-pagamento-service.json << EOF
+cat > ~/hotel/hotel-deploy/create-pagamento-service.json << EOF
 {
   "cluster": "hotel-cluster",
   "serviceName": "pagamento-service",
@@ -1235,7 +1339,7 @@ EOF
 ### 7.3 Criar os 5 serviços ECS
 
 ```bash
-cd ~/environment/hotel-deploy
+cd ~/hotel/hotel-deploy
 
 # Primeiro o front (blue/green — CodeDeploy vai assumir depois)
 aws ecs create-service --cli-input-json file://create-front-service.json
@@ -1279,7 +1383,7 @@ Anota a URL do repositório que aparece no output (`cloneUrlHttp`).
 
 **appspec-front.yaml:**
 ```bash
-cat > ~/environment/hotel-deploy/appspec-front.yaml << 'EOF'
+cat > ~/hotel/hotel-deploy/appspec-front.yaml << 'EOF'
 version: 0.0
 Resources:
   - TargetService:
@@ -1297,7 +1401,7 @@ Para os MS com rolling update (cliente, reserva, quarto, pagamento), cria um app
 
 ```bash
 for ms in cliente reserva quarto pagamento; do
-cat > ~/environment/hotel-deploy/appspec-${ms}.yaml << EOF
+cat > ~/hotel/hotel-deploy/appspec-${ms}.yaml << EOF
 version: 0.0
 Resources:
   - TargetService:
@@ -1319,7 +1423,7 @@ Para os MS que usam rolling update (não blue/green), o CodePipeline precisa de 
 ```bash
 for ms in cliente reserva quarto pagamento; do
   PORT=$(case $ms in cliente) echo 9531;; reserva) echo 9532;; quarto) echo 9533;; pagamento) echo 9534;; esac)
-  cat > ~/environment/hotel-deploy/imagedefinitions-${ms}.json << EOF
+  cat > ~/hotel/hotel-deploy/imagedefinitions-${ms}.json << EOF
 [{"name":"hotel-${ms}","imageUri":"$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/hotel-${ms}:latest"}]
 EOF
 done
@@ -1328,7 +1432,7 @@ done
 ### 8.4 Push de todos os arquivos para o CodeCommit
 
 ```bash
-cd ~/environment/hotel-deploy
+cd ~/hotel/hotel-deploy
 
 git init
 git add .
