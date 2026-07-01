@@ -192,7 +192,7 @@ VITE_USUARIO_API=http://academico3.rj.senac.br/20261prj5/hotel/cliente
 
 **MS Cliente — ECS task definition:**
 ```
-DATABASE_URL          = mysql://admin:Hotelaria2025@<RDS_ENDPOINT>:3306/hotel_cliente
+DATABASE_URL          = mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_cliente
 JWT_SECRET            = segredo
 PORT                  = 9531
 RABBITMQ_URL          = amqp://admin:admin@<EC2_PRIVATE_IP>:5672
@@ -204,7 +204,7 @@ URL_SERVICO_RESERVA   = http://<ALB_DNS>:9532/reservas
 **MS Reserva — ECS task definition:**
 ```
 CLIENTE_API_URL = http://<ALB_DNS>:9531
-DATABASE_URL    = mysql://admin:Hotelaria2025@<RDS_ENDPOINT>:3306/hotel_reserva
+DATABASE_URL    = mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_reserva
 JWT_SECRET      = segredo
 PORT            = 9532
 QUARTO_API_URL  = http://<ALB_DNS>:9533/api/quartos
@@ -213,7 +213,7 @@ RABBITMQ_URL    = amqp://admin:admin@<EC2_PRIVATE_IP>:5672
 
 **MS Quarto — ECS task definition:**
 ```
-DATABASE_URL          = mysql://admin:Hotelaria2025@<RDS_ENDPOINT>:3306/hotel_quarto
+DATABASE_URL          = mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_quarto
 JWT_SECRET            = segredo
 PORT                  = 9533
 RABBITMQ_URL          = amqp://admin:admin@<EC2_PRIVATE_IP>:5672
@@ -224,7 +224,7 @@ URL_SERVICO_RESERVA   = http://<ALB_DNS>:9532/reservas
 
 **MS Pagamento — ECS task definition:**
 ```
-DATABASE_URL          = mysql://admin:Hotelaria2025@<RDS_ENDPOINT>:3306/hotel_pagamento
+DATABASE_URL          = mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_pagamento
 JWT_SECRET            = segredo
 PORT                  = 9534
 RABBITMQ_URL          = amqp://admin:admin@<EC2_PRIVATE_IP>:5672
@@ -235,12 +235,14 @@ URL_SERVICO_RESERVA   = http://<ALB_DNS>:9532
 
 **Front-end — ECS task definition:**
 ```
-PORT             = 9540
+PORT               = 9540
 VITE_PAGAMENTO_API = http://<ALB_DNS>:9534
 VITE_QUARTO_API    = http://<ALB_DNS>:9533
 VITE_RESERVA_API   = http://<ALB_DNS>:9532
 VITE_USUARIO_API   = http://<ALB_DNS>:9531
 ```
+
+> **Nota sobre `DATABASE_URL`:** O `%40` é o símbolo `@` codificado para URL — a senha real é `senac@12938`. O Prisma exige essa codificação para não confundir `@` da senha com o `@` que separa usuário/senha do host. Os .env originais de MS Reserva, Quarto e Pagamento tinham `senac@12938` sem codificação, o que funcionava no Jenkins por acaso. Na AWS, usamos `senac%4012938` igual ao MS Cliente para garantir.
 
 ---
 
@@ -258,11 +260,12 @@ O projeto tem 5 serviços que precisam rodar em paralelo:
 
 Além disso, vamos criar na AWS:
 - **1 EC2** rodando RabbitMQ (comunicação entre os MS)
-- **1 RDS MySQL** com 4 bancos de dados (um por MS)
 - **1 ALB** (balanceador de carga) que recebe o tráfego e distribui para cada serviço
 - **5 repositórios ECR** (onde ficam as imagens Docker)
 - **1 cluster ECS Fargate** com 5 serviços rodando os containers
 - **5 pipelines CodePipeline** (CI/CD automático)
+
+> **Banco de dados:** O MySQL do SENAC (`edumysql.acesso.rj.senac.br`) é acessível de qualquer rede — vamos usá-lo diretamente. Não precisa criar RDS na AWS.
 
 ---
 
@@ -282,8 +285,10 @@ ALB hotelLB (DNS público: hotelLB-xxxx.us-east-1.elb.amazonaws.com)
     └── Porta 9534  ──► pagamento-tg  ──► ECS: pagamento-svc   (porta 9534)
 
 Infraestrutura interna (VPC):
-    ├── EC2 hotel-rabbitmq  (IP privado: 10.0.X.X, porta 5672)
-    └── RDS hotel-db        (endpoint: hotel-db.xxxx.us-east-1.rds.amazonaws.com)
+    └── EC2 hotel-rabbitmq  (IP privado: 10.0.X.X, porta 5672)
+
+Banco de dados (externo — SENAC, acessível de qualquer rede):
+    └── edumysql.acesso.rj.senac.br:3306  (mesmo banco usado no Jenkins/SENAC)
 ```
 
 ---
@@ -292,12 +297,12 @@ Infraestrutura interna (VPC):
 
 ```
 1. EC2 com RabbitMQ        ← precisa do IP privado antes de criar task definitions
-2. RDS MySQL               ← precisa do endpoint antes de criar task definitions
-3. ECR + imagens Docker    ← build e push dos 5 containers
-4. Task Definitions        ← usa IPs do RabbitMQ e RDS
-5. Target Groups (6)       ← prepara os destinos do tráfego
-6. Security Group + ALB    ← cria o balanceador com os 6 listeners
-7. Atualizar task defs     ← coloca o DNS do ALB no front e no MS Reserva
+2. ECR + imagens Docker    ← build e push dos 5 containers
+3. Task Definitions        ← usa IP do RabbitMQ; DATABASE_URL já vem do SENAC
+4. Target Groups (6)       ← prepara os destinos do tráfego
+5. Security Group + ALB    ← cria o balanceador com os 6 listeners
+6. Substituir ALB_DNS      ← coloca o DNS do ALB nos task definitions
+7. Registrar task defs     ← registra os 5 no ECS
 8. ECS Services (5)        ← sobe os containers
 9. CodeDeploy              ← configura deploy blue/green do front
 10. CodePipeline (5)       ← CI/CD automático
@@ -416,202 +421,33 @@ Se aparecer o painel com **Overview** e **Connections**, o RabbitMQ está funcio
 
 ---
 
-## FASE 2 — RDS MySQL (banco de dados)
+## FASE 2 — Banco de Dados (SENAC — sem RDS)
 
-> **Por que na AWS e não usar o banco do SENAC?** O banco do SENAC (academico3.rj.senac.br) não é acessível pela internet — só de dentro da rede da faculdade. Na AWS, os containers ECS estão na nuvem e precisam de um banco acessível de lá.
+> **O banco do SENAC é acessível de qualquer rede.** Não precisamos criar RDS na AWS. Os containers ECS vão se conectar diretamente ao `edumysql.acesso.rj.senac.br:3306` usando as mesmas credenciais que já funcionam no Jenkins.
 
-### 2.1 Criar o Subnet Group
+### 2.1 Verificar conectividade (opcional mas recomendado)
 
-Antes de criar o RDS, precisamos criar um grupo de subnets para ele.
-
-1. No console AWS, vai em **RDS**
-2. No menu lateral, clica em **Subnet groups**
-3. Clica em **Create DB subnet group**
-4. Preenche:
-
-```
-Name: hotel-db-subnet-group
-Description: Subnets para o banco do hotel
-VPC: LabVPC
-```
-
-Em **Add subnets**:
-- Availability Zones: seleciona **us-east-1a** e **us-east-1b**
-- Subnets: seleciona **Public Subnet 1** e **Public Subnet 2**
-
-Clica em **Create**.
-
-### 2.2 Criar o Security Group do banco
-
-1. Vai em **EC2 → Security Groups**
-2. Clica em **Create security group**
-3. Preenche:
-
-```
-Security group name: hotel-db-sg
-Description: Banco de dados do hotel
-VPC: LabVPC
-```
-
-**Inbound rules** — clica em **Add rule**:
-
-| Type | Port | Source | Descrição |
-|------|------|--------|-----------|
-| MySQL/Aurora | 3306 | 0.0.0.0/0 | Acesso ao MySQL |
-
-> **Nota:** Em produção de verdade, você restringiria o acesso só ao VPC. Para o projeto da faculdade, `0.0.0.0/0` facilita rodar as migrations de qualquer lugar.
-
-Clica em **Create security group**.
-
-### 2.3 Criar o RDS
-
-1. Volta em **RDS**
-2. Clica em **Create database**
-3. Preenche os campos:
-
-**Choose a database creation method:**
-```
-Standard create
-```
-
-**Engine options:**
-```
-Engine type: MySQL
-Engine version: MySQL 8.0.35 (ou a versão mais recente 8.0.x disponível)
-```
-
-**Templates:**
-```
-Free tier
-```
-
-**Settings:**
-```
-DB instance identifier: hotel-db
-Master username: admin
-Master password: Hotelaria2025
-Confirm master password: Hotelaria2025
-```
-
-> **Anota essa senha.** Você vai precisar dela para montar as URLs de conexão.
-
-**Instance configuration:**
-```
-DB instance class: db.t3.micro
-```
-
-**Storage:**
-```
-Storage type: gp2
-Allocated storage: 20 GB
-Enable storage autoscaling: desmarcar
-```
-
-**Connectivity:**
-```
-Virtual private cloud (VPC): LabVPC
-DB subnet group: hotel-db-subnet-group
-Public access: Yes (necessário para rodar migrations do Cloud9)
-VPC security group: Existing → selecionar hotel-db-sg
-Availability Zone: us-east-1a
-```
-
-**Database authentication:**
-```
-Password authentication
-```
-
-**Additional configuration** — clica para expandir:
-```
-Initial database name: (deixar em branco — criaremos os bancos pelo SQL)
-Backup: desmarcar "Enable automated backups" (economiza custo no lab)
-```
-
-Clica em **Create database** e aguarda. O status vai de `Creating` para `Available` (leva 5-10 minutos).
-
-### 2.4 Anotar o endpoint do RDS
-
-Quando o status for `Available`, clica na instância `hotel-db` e na aba **Connectivity & security** copia o **Endpoint**:
-
-```
-hotel-db.xxxxxxxxxxxx.us-east-1.rds.amazonaws.com
-```
-
-> **Anota esse endpoint.** Você vai precisar dele na Fase 4.
-
-### 2.5 Criar os 4 bancos de dados
-
-Agora precisamos acessar o MySQL do RDS e criar um banco para cada MS.
-
-**No Cloud9 (ou no terminal local se tiver MySQL client instalado):**
+Antes de prosseguir, confirma que o banco responde pelo Cloud9:
 
 ```bash
-mysql -h hotel-db.xxxxxxxxxxxx.us-east-1.rds.amazonaws.com \
-      -u admin \
-      -p
+# Instala o cliente MySQL no Cloud9 se necessário
+sudo dnf install -y mysql
+
+# Testa conexão com o banco do MS Cliente
+mysql -h edumysql.acesso.rj.senac.br \
+      -u 20261_projint5_manha \
+      -p"senac@12938" \
+      20261_projint5_manha_hotel_cliente \
+      -e "SHOW TABLES;"
 ```
 
-Digita a senha `Hotelaria2025` quando pedir.
+Se listar as tabelas, está tudo certo — o banco já existe com as tabelas criadas pelo Jenkins.
 
-Dentro do MySQL, executa:
+> **Não cria nem altera nada no banco.** As tabelas já existem e os dados de produção estão lá. O `prisma db push` nos Dockerfiles do MS Reserva e MS Quarto vai verificar o schema e, se estiver tudo em dia, apenas confirmar sem alterar nada.
 
-```sql
-CREATE DATABASE hotel_cliente CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE hotel_reserva  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE hotel_quarto   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE hotel_pagamento CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+### 2.2 Nenhuma ação necessária — continue para a Fase 3
 
-SHOW DATABASES;
--- Deve mostrar os 4 bancos criados
-
-EXIT;
-```
-
-### 2.6 Rodar as migrations (criar as tabelas)
-
-Cada MS tem suas próprias tabelas definidas via Prisma. Precisamos executar o `prisma migrate deploy` para criar as tabelas em cada banco.
-
-**No Cloud9, clone os repos se ainda não tiver feito:**
-
-```bash
-cd ~/environment
-
-# Substitua pelos URLs reais dos seus repos no CodeCommit ou GitHub
-git clone <URL_DO_PI_hotel_cliente>
-git clone <URL_DO_PI_Hotel_Reserva>
-git clone <URL_DO_pi_hotel_quarto>
-git clone <URL_DO_api_hotel_pagamento>
-```
-
-**Rodar migrations de cada MS:**
-
-```bash
-# MS Cliente
-cd ~/environment/PI_hotel_cliente
-npm install
-DATABASE_URL="mysql://admin:Hotelaria2025@hotel-db.xxxx.us-east-1.rds.amazonaws.com:3306/hotel_cliente" \
-  npx prisma migrate deploy
-
-# MS Reserva
-cd ~/environment/PI_Hotel_Reserva
-npm install
-DATABASE_URL="mysql://admin:Hotelaria2025@hotel-db.xxxx.us-east-1.rds.amazonaws.com:3306/hotel_reserva" \
-  npx prisma migrate deploy
-
-# MS Quarto
-cd ~/environment/pi_hotel_quarto
-npm install
-DATABASE_URL="mysql://admin:Hotelaria2025@hotel-db.xxxx.us-east-1.rds.amazonaws.com:3306/hotel_quarto" \
-  npx prisma migrate deploy
-
-# MS Pagamento
-cd ~/environment/api_hotel_pagamento
-npm install
-DATABASE_URL="mysql://admin:Hotelaria2025@hotel-db.xxxx.us-east-1.rds.amazonaws.com:3306/hotel_pagamento" \
-  npx prisma migrate deploy
-```
-
-> Se aparecer `All migrations have been successfully applied` para cada MS, as tabelas foram criadas com sucesso.
+O `DATABASE_URL` de cada MS já está definido nos task definitions da Fase 3 com os valores reais do SENAC. Não há nada a configurar aqui.
 
 ---
 
@@ -763,16 +599,14 @@ cd ~/environment/hotel-deploy
 
 ### 4.3 Preencher os valores reais
 
-Antes de criar os arquivos, você precisa ter em mãos:
+Antes de criar os arquivos, você precisa ter em mãos apenas **2 valores** da AWS (o banco vem direto do SENAC):
 
 | Variável | Onde buscar | Exemplo |
 |----------|-------------|---------|
 | `ACCOUNT_ID` | `aws sts get-caller-identity --query Account --output text` | `123456789012` |
-| `RDS_ENDPOINT` | RDS → hotel-db → Connectivity → Endpoint | `hotel-db.abc123.us-east-1.rds.amazonaws.com` |
 | `RABBITMQ_PRIVATE_IP` | EC2 → hotel-rabbitmq → Details → Private IPv4 | `10.0.1.45` |
-| `JWT_SECRET` | O mesmo valor usado no MS Cliente em produção (Infisical ou Jenkins) | `sua_chave_super_secreta` |
 
-> **ATENÇÃO sobre o JWT_SECRET:** Tem que ser o MESMO valor em todos os 5 serviços. Se cada MS usar um secret diferente, os tokens gerados pelo MS Cliente não serão aceitos pelos outros MS.
+> `DATABASE_URL`, `JWT_SECRET` e todos os outros valores já estão escritos diretamente nos JSON abaixo — não precisam ser buscados.
 
 ### 4.4 Arquivo: taskdef-front.json
 
@@ -841,7 +675,7 @@ cat > ~/environment/hotel-deploy/taskdef-cliente.json << 'EOF'
       "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/hotel-cliente:IMAGE1_NAME",
       "portMappings": [{ "containerPort": 9531, "protocol": "tcp" }],
       "environment": [
-        { "name": "DATABASE_URL",          "value": "mysql://admin:Hotelaria2025@RDS_ENDPOINT:3306/hotel_cliente" },
+        { "name": "DATABASE_URL",          "value": "mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_cliente" },
         { "name": "JWT_SECRET",            "value": "segredo" },
         { "name": "PORT",                  "value": "9531" },
         { "name": "RABBITMQ_URL",          "value": "amqp://admin:admin@RABBITMQ_PRIVATE_IP:5672" },
@@ -884,7 +718,7 @@ cat > ~/environment/hotel-deploy/taskdef-reserva.json << 'EOF'
       "portMappings": [{ "containerPort": 9532, "protocol": "tcp" }],
       "environment": [
         { "name": "CLIENTE_API_URL", "value": "http://ALB_DNS:9531" },
-        { "name": "DATABASE_URL",    "value": "mysql://admin:Hotelaria2025@RDS_ENDPOINT:3306/hotel_reserva" },
+        { "name": "DATABASE_URL",    "value": "mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_reserva" },
         { "name": "JWT_SECRET",      "value": "segredo" },
         { "name": "PORT",            "value": "9532" },
         { "name": "QUARTO_API_URL",  "value": "http://ALB_DNS:9533/api/quartos" },
@@ -924,7 +758,7 @@ cat > ~/environment/hotel-deploy/taskdef-quarto.json << 'EOF'
       "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/hotel-quarto:IMAGE1_NAME",
       "portMappings": [{ "containerPort": 9533, "protocol": "tcp" }],
       "environment": [
-        { "name": "DATABASE_URL",          "value": "mysql://admin:Hotelaria2025@RDS_ENDPOINT:3306/hotel_quarto" },
+        { "name": "DATABASE_URL",          "value": "mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_quarto" },
         { "name": "JWT_SECRET",            "value": "segredo" },
         { "name": "PORT",                  "value": "9533" },
         { "name": "RABBITMQ_URL",          "value": "amqp://admin:admin@RABBITMQ_PRIVATE_IP:5672" },
@@ -966,7 +800,7 @@ cat > ~/environment/hotel-deploy/taskdef-pagamento.json << 'EOF'
       "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/hotel-pagamento:IMAGE1_NAME",
       "portMappings": [{ "containerPort": 9534, "protocol": "tcp" }],
       "environment": [
-        { "name": "DATABASE_URL",          "value": "mysql://admin:Hotelaria2025@RDS_ENDPOINT:3306/hotel_pagamento" },
+        { "name": "DATABASE_URL",          "value": "mysql://20261_projint5_manha:senac%4012938@edumysql.acesso.rj.senac.br:3306/20261_projint5_manha_hotel_pagamento" },
         { "name": "JWT_SECRET",            "value": "segredo" },
         { "name": "PORT",                  "value": "9534" },
         { "name": "RABBITMQ_URL",          "value": "amqp://admin:admin@RABBITMQ_PRIVATE_IP:5672" },
@@ -990,47 +824,37 @@ EOF
 
 ### 4.9 Substituir os placeholders nos arquivos
 
-Existem 4 placeholders nos task definitions que dependem de recursos AWS. Substitui conforme for criando cada recurso:
+Os task definitions têm apenas **3 placeholders** — DATABASE_URL e JWT_SECRET já estão escritos diretamente nos JSON:
 
 | Placeholder | Quando preencher | Como obter |
 |---|---|---|
 | `ACCOUNT_ID` | Agora | `aws sts get-caller-identity --query Account --output text` |
-| `RDS_ENDPOINT` | Após Fase 2 | Console RDS → hotel-db → Connectivity → Endpoint |
 | `RABBITMQ_PRIVATE_IP` | Após Fase 1 | Console EC2 → hotel-rabbitmq → Private IPv4 address |
-| `ALB_DNS` | Após Fase 6 | Console EC2 → Load Balancers → hotel-alb → DNS name |
+| `ALB_DNS` | Após Fase 6 | Console EC2 → Load Balancers → hotelLB → DNS name |
 
 ```bash
-# ─── PREENCHA OS 3 PRIMEIROS AGORA ──────────────────────────────────────
-ACCOUNT_ID="123456789012"                                   # substitui pelo ID real
-RDS_ENDPOINT="hotel-db.xxxx.us-east-1.rds.amazonaws.com"   # substitui após criar o RDS
-RABBITMQ_IP="10.0.X.X"                                     # substitui após criar a EC2
+# ─── PREENCHA OS 2 PRIMEIROS AGORA ──────────────────────────────────────
+ACCOUNT_ID="123456789012"    # substitui pelo ID real da sua conta
+RABBITMQ_IP="10.0.X.X"      # substitui após criar a EC2 na Fase 1
 # ────────────────────────────────────────────────────────────────────────
 
 cd ~/environment/hotel-deploy
 
 sed -i "s/ACCOUNT_ID/$ACCOUNT_ID/g"           taskdef-*.json
-sed -i "s/RDS_ENDPOINT/$RDS_ENDPOINT/g"       taskdef-*.json
 sed -i "s/RABBITMQ_PRIVATE_IP/$RABBITMQ_IP/g" taskdef-*.json
 ```
 
-> `JWT_SECRET`, `PORT` e todos os valores de serviços já estão escritos diretamente nos JSON — não precisam de substituição.
-
-> **`ALB_DNS` fica como placeholder** até a Fase 6. Após criar o ALB, rode:
+> **`ALB_DNS` fica como placeholder** em todos os 5 task definitions até a Fase 6. Após criar o ALB:
 > ```bash
-> ALB_DNS="hotel-alb-1234567890.us-east-1.elb.amazonaws.com"
+> ALB_DNS="hotelLB-1234567890.us-east-1.elb.amazonaws.com"
 > sed -i "s|ALB_DNS|$ALB_DNS|g" taskdef-*.json
 > ```
 
-### 4.10 Registrar o task definition do MS Pagamento
+### 4.10 Aguardar a Fase 6 para registrar os task definitions
 
-O MS Pagamento não tem `ALB_DNS` nas suas variáveis (ele recebe chamadas, não chama outros MS via URL dinâmica). Pode registrar agora:
+**Todos os 5 task definitions** contêm `ALB_DNS` — inclusive o MS Pagamento, que chama os outros MS pelas URLs `http://ALB_DNS:9531`, `:9533` e `:9532`. Nenhum pode ser registrado antes de criar o ALB.
 
-```bash
-cd ~/environment/hotel-deploy
-aws ecs register-task-definition --cli-input-json file://taskdef-pagamento.json
-```
-
-> Os outros 4 task definitions serão registrados na Fase 6 após substituir `ALB_DNS`.
+> Continue para as Fases 5 e 6. Na Fase 6.5 você substitui `ALB_DNS` e registra todos de uma vez.
 
 ---
 
@@ -1169,38 +993,38 @@ hotelLB-1234567890.us-east-1.elb.amazonaws.com
 
 ### 6.5 Substituir ALB_DNS em todos os task definitions
 
-Quatro task definitions usam o DNS do ALB: front, cliente, reserva e quarto.
+**Todos os 5 task definitions** usam o DNS do ALB.
 
 ```bash
 ALB_DNS="hotelLB-1234567890.us-east-1.elb.amazonaws.com"  # coloca o DNS real aqui
 
 cd ~/environment/hotel-deploy
 
-sed -i "s/ALB_DNS/$ALB_DNS/g" taskdef-front.json
-sed -i "s/ALB_DNS/$ALB_DNS/g" taskdef-cliente.json
-sed -i "s/ALB_DNS/$ALB_DNS/g" taskdef-reserva.json
-sed -i "s/ALB_DNS/$ALB_DNS/g" taskdef-quarto.json
+sed -i "s|ALB_DNS|$ALB_DNS|g" taskdef-*.json
 ```
 
 Verifica se ficou correto:
 
 ```bash
-grep "VITE_USUARIO_API"   taskdef-front.json      # deve mostrar o DNS real
+grep "VITE_USUARIO_API"    taskdef-front.json     # deve mostrar o DNS real
 grep "URL_SERVICO_RESERVA" taskdef-cliente.json   # deve mostrar o DNS real
-grep "CLIENTE_API_URL"    taskdef-reserva.json     # deve mostrar o DNS real
+grep "CLIENTE_API_URL"     taskdef-reserva.json   # deve mostrar o DNS real
 grep "URL_SERVICO_RESERVA" taskdef-quarto.json    # deve mostrar o DNS real
+grep "URL_SERVICO_CLIENTE" taskdef-pagamento.json # deve mostrar o DNS real
 ```
 
 Todos devem mostrar a URL com o DNS do ALB em vez de `ALB_DNS`.
 
-### 6.6 Registrar os 4 task definitions restantes
+### 6.6 Registrar os 5 task definitions
 
 ```bash
 cd ~/environment/hotel-deploy
+
 aws ecs register-task-definition --cli-input-json file://taskdef-front.json
 aws ecs register-task-definition --cli-input-json file://taskdef-cliente.json
 aws ecs register-task-definition --cli-input-json file://taskdef-reserva.json
 aws ecs register-task-definition --cli-input-json file://taskdef-quarto.json
+aws ecs register-task-definition --cli-input-json file://taskdef-pagamento.json
 ```
 
 Para confirmar que todos os 5 foram registrados:
@@ -1766,15 +1590,14 @@ Preenche à medida que for criando cada recurso. Se perder algum valor, a Fase 0
 ```
 ─── DA AWS (você cria) ────────────────────────────────────────────────────
 ACCOUNT_ID:           ______________________________   (aws sts get-caller-identity)
-RDS_ENDPOINT:         ______________________________   (RDS → hotel-db → Connectivity)
 RABBITMQ_PUBLIC_IP:   ______________________________   (EC2 → hotel-rabbitmq → Public IPv4)
 RABBITMQ_PRIVATE_IP:  ______________________________   (EC2 → hotel-rabbitmq → Private IPv4)
 ALB_DNS:              ______________________________   (EC2 → Load Balancers → DNS name)
 
-─── DO INFISICAL (você extrai com os comandos da Fase 0) ──────────────────
-JWT_SECRET:           ______________________________   (mesmo valor para todos os MS)
-AUTH_USER:            ______________________________   (só MS Pagamento)
-AUTH_PASS:            ______________________________   (só MS Pagamento)
+─── JÁ CONHECIDOS (do Infisical / .env) ──────────────────────────────────
+JWT_SECRET:           segredo                          (igual em todos os MS)
+DATABASE_URL:         mysql://20261_projint5_manha:senac%4012938@edumysql...  (SENAC — já nos JSONs)
+RABBITMQ_URL:         amqp://admin:admin@<RABBITMQ_PRIVATE_IP>:5672
 ```
 
 ---
@@ -1784,10 +1607,11 @@ AUTH_PASS:            ______________________________   (só MS Pagamento)
 | Recurso | Tipo | Custo estimado/hora |
 |---------|------|---------------------|
 | EC2 hotel-rabbitmq | t3.micro | $0.013 |
-| RDS hotel-db | db.t3.micro | $0.017 |
 | ALB hotelLB | Application LB | $0.008 + $0.008/LCU |
 | ECS Fargate (5 tasks) | 0.25 vCPU × 5 | ~$0.040 |
 | ECR (armazenamento) | ~2 GB | ~$0.001 |
-| **Total aproximado** | | **~$0.08/hora (~$2/dia)** |
+| **Total aproximado** | | **~$0.06/hora (~$1.5/dia)** |
 
-> **Desligue os recursos quando não estiver usando** para não gastar os créditos do lab. Para pausar: pare os ECS services (desiredCount = 0), pare a EC2, pare o RDS (Stop temporarily).
+> Sem RDS o custo fica ainda menor — usando o banco do SENAC que já existe.
+
+> **Desligue os recursos quando não estiver usando** para não gastar os créditos do lab. Para pausar: pare os ECS services (desiredCount = 0) e pare a EC2.
