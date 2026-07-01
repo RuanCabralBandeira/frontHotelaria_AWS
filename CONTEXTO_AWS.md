@@ -5,6 +5,153 @@
 
 ---
 
+## ESTADO ATUAL DO DEPLOY — 2026-07-01
+
+### Recursos criados com sucesso
+
+| Recurso | Nome / Valor | Status |
+|---------|-------------|--------|
+| EC2 RabbitMQ | `hotel-rabbitmq` — IP privado `172.31.11.117` | ✅ Running |
+| EC2 Builder | `hotel-builder` — usado para todos os comandos | ✅ Running |
+| ECR repos | hotel-front, hotel-cliente, hotel-reserva, hotel-quarto, hotel-pagamento | ✅ Criados |
+| Task Definitions | hotel-front:2, hotel-cliente:2, hotel-reserva:2, hotel-quarto:1, hotel-pagamento:2 | ✅ Registradas |
+| ALB | `hotelLB-1616094860.us-east-1.elb.amazonaws.com` | ✅ Ativo |
+| Target Groups (IP) | `front-tg-one`, `front-tg-two` | ✅ Criados |
+| Listeners | Porta 80 → front-tg-one, Porta 8080 → front-tg-two | ✅ Criados |
+| ECS Cluster | `hotel-cluster` | ✅ Criado |
+| ECS Service | `front-service` (CODE_DEPLOY, task-def hotel-front:2) | ✅ Criado |
+| VPC | `vpc-0a83ca351b326f588` | ✅ |
+| Security Group | `sg-0cc738079c4737459` (hotel-sg) | ✅ |
+| Subnets usadas | `subnet-08cc713626c40b8af`, `subnet-0fa81ef3df9ac2cd3` | ✅ |
+
+### Pendente — próximos passos obrigatórios
+
+| O que falta | Motivo do problema |
+|-------------|-------------------|
+| ❌ TGs: `cliente-tg`, `reserva-tg`, `quarto-tg`, `pagamento-tg` | `--matcher HttpCode=200,405` falhou — CLI interpretou vírgula como lista. Fix: usar `--matcher '{"HttpCode":"200,405"}'` |
+| ❌ Listeners: portas 9531, 9532, 9533, 9534 | TGs acima não existiam na hora da criação |
+| ❌ ECS Services: `cliente-service`, `reserva-service`, `quarto-service`, `pagamento-service` | ARNs dos TGs estavam vazios nos JSONs |
+| ❌ Docker images | Imagens ainda não buildadas e enviadas ao ECR — os serviços não conseguem iniciar sem elas |
+| ❌ CodeDeploy + CodePipeline | Fases 8, 9, 10 não executadas |
+
+### Correção imediata necessária (rodar na EC2 hotel-builder)
+
+```bash
+cd ~/hotel/hotel-deploy
+
+ALB_ARN=$(aws elbv2 describe-load-balancers --names hotelLB \
+  --query 'LoadBalancers[0].LoadBalancerArn' --output text --no-cli-pager)
+VPC_ID="vpc-0a83ca351b326f588"
+
+# Cria os 4 TGs que faltaram (formato correto para HttpCode múltiplo)
+CLIENTE=$(aws elbv2 create-target-group --no-cli-pager \
+  --name cliente-tg --protocol HTTP --port 9531 --vpc-id $VPC_ID \
+  --target-type ip --health-check-path /usuario/login \
+  --matcher '{"HttpCode":"200,405"}' \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+RESERVA=$(aws elbv2 create-target-group --no-cli-pager \
+  --name reserva-tg --protocol HTTP --port 9532 --vpc-id $VPC_ID \
+  --target-type ip --health-check-path /reservas \
+  --matcher '{"HttpCode":"200,401"}' \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+QUARTO=$(aws elbv2 create-target-group --no-cli-pager \
+  --name quarto-tg --protocol HTTP --port 9533 --vpc-id $VPC_ID \
+  --target-type ip --health-check-path /api/quartos \
+  --matcher '{"HttpCode":"200,401"}' \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+PAGAMENTO=$(aws elbv2 create-target-group --no-cli-pager \
+  --name pagamento-tg --protocol HTTP --port 9534 --vpc-id $VPC_ID \
+  --target-type ip --health-check-path /pagamentos \
+  --matcher '{"HttpCode":"200,401,403"}' \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+echo "cliente-tg:   $CLIENTE"
+echo "reserva-tg:   $RESERVA"
+echo "quarto-tg:    $QUARTO"
+echo "pagamento-tg: $PAGAMENTO"
+
+# Cria os 4 listeners que faltaram
+aws elbv2 create-listener --no-cli-pager \
+  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9531 \
+  --default-actions Type=forward,TargetGroupArn=$CLIENTE > /dev/null && echo "Listener 9531 OK"
+
+aws elbv2 create-listener --no-cli-pager \
+  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9532 \
+  --default-actions Type=forward,TargetGroupArn=$RESERVA > /dev/null && echo "Listener 9532 OK"
+
+aws elbv2 create-listener --no-cli-pager \
+  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9533 \
+  --default-actions Type=forward,TargetGroupArn=$QUARTO > /dev/null && echo "Listener 9533 OK"
+
+aws elbv2 create-listener --no-cli-pager \
+  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9534 \
+  --default-actions Type=forward,TargetGroupArn=$PAGAMENTO > /dev/null && echo "Listener 9534 OK"
+
+# Atualiza os ARNs nos JSONs de criação de serviço
+sed -i "s|\"targetGroupArn\": \"arn[^\"]*cliente-tg[^\"]*\"|\"targetGroupArn\": \"$CLIENTE\"|g" create-cliente-service.json
+sed -i "s|\"targetGroupArn\": \"arn[^\"]*reserva-tg[^\"]*\"|\"targetGroupArn\": \"$RESERVA\"|g" create-reserva-service.json
+sed -i "s|\"targetGroupArn\": \"arn[^\"]*quarto-tg[^\"]*\"|\"targetGroupArn\": \"$QUARTO\"|g" create-quarto-service.json
+sed -i "s|\"targetGroupArn\": \"arn[^\"]*pagamento-tg[^\"]*\"|\"targetGroupArn\": \"$PAGAMENTO\"|g" create-pagamento-service.json
+
+# Confirma que os ARNs foram substituídos
+grep "targetGroupArn" create-cliente-service.json
+
+# Cria os 4 serviços ECS que faltaram
+aws ecs create-service --no-cli-pager --cli-input-json file://create-cliente-service.json
+aws ecs create-service --no-cli-pager --cli-input-json file://create-reserva-service.json
+aws ecs create-service --no-cli-pager --cli-input-json file://create-quarto-service.json
+aws ecs create-service --no-cli-pager --cli-input-json file://create-pagamento-service.json
+
+# Verifica os 5 serviços
+aws ecs list-services --no-cli-pager --cluster hotel-cluster --output table
+```
+
+### Depois de corrigir — próximo passo obrigatório
+
+As imagens Docker ainda não foram buildadas. Os serviços vão ficar em `PENDING` até as builds serem feitas:
+
+```bash
+# Volta para a Fase 3 — build e push das imagens
+cd ~/hotel
+
+ACCOUNT_ID="508383244883"
+REGION="us-east-1"
+
+aws ecr get-login-password --region $REGION | \
+  docker login --username AWS \
+  --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+# Build e push de cada serviço (rodar um por vez)
+cd ~/hotel/frontHotelaria && docker build -t hotel-front . && \
+  docker tag hotel-front:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-front:latest && \
+  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-front:latest
+
+cd ~/hotel/PI_hotel_cliente && docker build -t hotel-cliente . && \
+  docker tag hotel-cliente:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-cliente:latest && \
+  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-cliente:latest
+
+cd ~/hotel/PI_Hotel_Reserva && docker build -t hotel-reserva . && \
+  docker tag hotel-reserva:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-reserva:latest && \
+  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-reserva:latest
+
+cd ~/hotel/pi_hotel_quarto && docker build -t hotel-quarto . && \
+  docker tag hotel-quarto:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-quarto:latest && \
+  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-quarto:latest
+
+cd ~/hotel/api_hotel_pagamento && docker build -t hotel-pagamento . && \
+  docker tag hotel-pagamento:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-pagamento:latest && \
+  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-pagamento:latest
+```
+
+> **Nota importante:** Os task definitions usam a tag `IMAGE1_NAME` como placeholder (para ser substituída pelo CodePipeline). Para testar antes de configurar o CodePipeline, é necessário registrar novas revisões dos task definitions com a tag `:latest`. Isso é feito automaticamente quando o CodePipeline rodar pela primeira vez (Fases 9 e 10).
+
+---
+
+---
+
 ## Repositórios AWS (código já adaptado)
 
 Todos os repos abaixo estão em `RuanCabralBandeira` com as mudanças AWS já aplicadas:
