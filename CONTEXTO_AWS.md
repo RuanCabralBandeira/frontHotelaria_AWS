@@ -11,6 +11,11 @@
 
 | Recurso | Nome / Valor | Status |
 |---------|-------------|--------|
+| Repo Front-end | https://github.com/RuanCabralBandeira/frontHotelaria_AWS | ✅ |
+| Repo MS Cliente | https://github.com/RuanCabralBandeira/PI_hotel_cliente_AWS | ✅ |
+| Repo MS Reserva | https://github.com/RuanCabralBandeira/PI_Hotel_Reserva_AWS | ✅ |
+| Repo MS Quarto | https://github.com/RuanCabralBandeira/pi_hotel_quarto_AWS | ✅ |
+| Repo MS Pagamento | https://github.com/RuanCabralBandeira/api_hotel_pagamento_AWS | ✅ |
 | EC2 RabbitMQ | `hotel-rabbitmq` — IP privado `172.31.11.117` | ✅ Running |
 | EC2 Builder | `hotel-builder` — usado para todos os comandos | ✅ Running |
 | ECR repos | hotel-front, hotel-cliente, hotel-reserva, hotel-quarto, hotel-pagamento | ✅ Criados |
