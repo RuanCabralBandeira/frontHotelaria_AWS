@@ -5,153 +5,111 @@
 
 ---
 
-## ESTADO ATUAL DO DEPLOY — 2026-07-01
+## ESTADO ATUAL DO DEPLOY — 2026-07-01 (v2)
 
-### Recursos criados com sucesso
+> Atualizado após resolução dos target groups, listeners, services, build/push das imagens e problemas de inicialização do MS Quarto.
+
+### Infraestrutura completa
 
 | Recurso | Nome / Valor | Status |
 |---------|-------------|--------|
 | Repo Front-end | https://github.com/RuanCabralBandeira/frontHotelaria_AWS | ✅ |
 | Repo MS Cliente | https://github.com/RuanCabralBandeira/PI_hotel_cliente_AWS | ✅ |
-| Repo MS Reserva | https://github.com/RuanCabralBandeira/PI_Hotel_Reserva_AWS | ✅ |
-| Repo MS Quarto | https://github.com/RuanCabralBandeira/pi_hotel_quarto_AWS | ✅ |
+| Repo MS Reserva | https://github.com/RuanCabralBandeira/PI_Hotel_Reserva_AWS | ✅ Dockerfile corrigido |
+| Repo MS Quarto | https://github.com/RuanCabralBandeira/pi_hotel_quarto_AWS | ✅ Dockerfile corrigido |
 | Repo MS Pagamento | https://github.com/RuanCabralBandeira/api_hotel_pagamento_AWS | ✅ |
 | EC2 RabbitMQ | `hotel-rabbitmq` — IP privado `172.31.11.117` | ✅ Running |
-| EC2 Builder | `hotel-builder` — usado para todos os comandos | ✅ Running |
-| ECR repos | hotel-front, hotel-cliente, hotel-reserva, hotel-quarto, hotel-pagamento | ✅ Criados |
-| Task Definitions | hotel-front:2, hotel-cliente:2, hotel-reserva:2, hotel-quarto:1, hotel-pagamento:2 | ✅ Registradas |
+| EC2 Builder | `hotel-builder` (`ip-172-31-8-166`) | ✅ Running |
+| ECR repos | hotel-front, hotel-cliente, hotel-reserva, hotel-quarto, hotel-pagamento | ✅ Imagens `:latest` enviadas |
 | ALB | `hotelLB-1616094860.us-east-1.elb.amazonaws.com` | ✅ Ativo |
-| Target Groups (IP) | `front-tg-one`, `front-tg-two` | ✅ Criados |
-| Listeners | Porta 80 → front-tg-one, Porta 8080 → front-tg-two | ✅ Criados |
-| ECS Cluster | `hotel-cluster` | ✅ Criado |
-| ECS Service | `front-service` (CODE_DEPLOY, task-def hotel-front:2) | ✅ Criado |
 | VPC | `vpc-0a83ca351b326f588` | ✅ |
 | Security Group | `sg-0cc738079c4737459` (hotel-sg) | ✅ |
 | Subnets usadas | `subnet-08cc713626c40b8af`, `subnet-0fa81ef3df9ac2cd3` | ✅ |
+| ECS Cluster | `hotel-cluster` | ✅ |
 
-### Pendente — próximos passos obrigatórios
+### Target Groups (todos criados e healthy)
 
-| O que falta | Motivo do problema |
-|-------------|-------------------|
-| ❌ TGs: `cliente-tg`, `reserva-tg`, `quarto-tg`, `pagamento-tg` | `--matcher HttpCode=200,405` falhou — CLI interpretou vírgula como lista. Fix: usar `--matcher '{"HttpCode":"200,405"}'` |
-| ❌ Listeners: portas 9531, 9532, 9533, 9534 | TGs acima não existiam na hora da criação |
-| ❌ ECS Services: `cliente-service`, `reserva-service`, `quarto-service`, `pagamento-service` | ARNs dos TGs estavam vazios nos JSONs |
-| ❌ Docker images | Imagens ainda não buildadas e enviadas ao ECR — os serviços não conseguem iniciar sem elas |
-| ❌ CodeDeploy + CodePipeline | Fases 8, 9, 10 não executadas |
+| TG | Porta | Health check path | Matcher | Status |
+|----|-------|-------------------|---------|--------|
+| `front-tg-one` | 9540 | `/` | 200 | ✅ (sobe com CodeDeploy) |
+| `front-tg-two` | 9540 | `/` | 200 | ✅ (blue/green) |
+| `cliente-tg` | 9531 | `/usuario/login` | 200,405 | ✅ healthy |
+| `reserva-tg` | 9532 | `/reservas` | 200,401 | ✅ healthy |
+| `quarto-tg` | 9533 | `/api/quartos` | 200,401 | ✅ healthy (timeout ajustado para 20s) |
+| `pagamento-tg` | 9534 | `/pagamentos` | 200,401,403 | ✅ healthy |
 
-### Correção imediata necessária (rodar na EC2 hotel-builder)
+### Listeners do ALB
 
+| Porta | Target Group | Status |
+|-------|-------------|--------|
+| 80 | front-tg-one | ✅ |
+| 8080 | front-tg-two | ✅ |
+| 9531 | cliente-tg | ✅ |
+| 9532 | reserva-tg | ✅ |
+| 9533 | quarto-tg | ✅ |
+| 9534 | pagamento-tg | ✅ |
+
+### ECS Services
+
+| Service | Controller | Status |
+|---------|-----------|--------|
+| `cliente-service` | ECS (rolling) | ✅ Running 1 / healthy |
+| `reserva-service` | ECS (rolling) | ✅ Running 1 / healthy |
+| `quarto-service` | ECS (rolling) | ✅ Running 1 / healthy |
+| `pagamento-service` | ECS (rolling) | ✅ Running 1 / healthy |
+| `front-service` | CODE_DEPLOY (blue/green) | ⏳ Running 0 — sobe na Fase 9 (CodeDeploy) |
+
+### Problemas resolvidos (registro para referência futura)
+
+**1. `--matcher` com vírgula quebrando na CLI**
+`Invalid type for parameter Matcher.HttpCode, value: ['200','405'], type: list`
+Fix: passar o matcher via arquivo JSON com `file://`:
 ```bash
-cd ~/hotel/hotel-deploy
-
-ALB_ARN=$(aws elbv2 describe-load-balancers --names hotelLB \
-  --query 'LoadBalancers[0].LoadBalancerArn' --output text --no-cli-pager)
-VPC_ID="vpc-0a83ca351b326f588"
-
-# Cria os 4 TGs que faltaram (formato correto para HttpCode múltiplo)
-CLIENTE=$(aws elbv2 create-target-group --no-cli-pager \
-  --name cliente-tg --protocol HTTP --port 9531 --vpc-id $VPC_ID \
-  --target-type ip --health-check-path /usuario/login \
-  --matcher '{"HttpCode":"200,405"}' \
-  --query 'TargetGroups[0].TargetGroupArn' --output text)
-
-RESERVA=$(aws elbv2 create-target-group --no-cli-pager \
-  --name reserva-tg --protocol HTTP --port 9532 --vpc-id $VPC_ID \
-  --target-type ip --health-check-path /reservas \
-  --matcher '{"HttpCode":"200,401"}' \
-  --query 'TargetGroups[0].TargetGroupArn' --output text)
-
-QUARTO=$(aws elbv2 create-target-group --no-cli-pager \
-  --name quarto-tg --protocol HTTP --port 9533 --vpc-id $VPC_ID \
-  --target-type ip --health-check-path /api/quartos \
-  --matcher '{"HttpCode":"200,401"}' \
-  --query 'TargetGroups[0].TargetGroupArn' --output text)
-
-PAGAMENTO=$(aws elbv2 create-target-group --no-cli-pager \
-  --name pagamento-tg --protocol HTTP --port 9534 --vpc-id $VPC_ID \
-  --target-type ip --health-check-path /pagamentos \
-  --matcher '{"HttpCode":"200,401,403"}' \
-  --query 'TargetGroups[0].TargetGroupArn' --output text)
-
-echo "cliente-tg:   $CLIENTE"
-echo "reserva-tg:   $RESERVA"
-echo "quarto-tg:    $QUARTO"
-echo "pagamento-tg: $PAGAMENTO"
-
-# Cria os 4 listeners que faltaram
-aws elbv2 create-listener --no-cli-pager \
-  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9531 \
-  --default-actions Type=forward,TargetGroupArn=$CLIENTE > /dev/null && echo "Listener 9531 OK"
-
-aws elbv2 create-listener --no-cli-pager \
-  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9532 \
-  --default-actions Type=forward,TargetGroupArn=$RESERVA > /dev/null && echo "Listener 9532 OK"
-
-aws elbv2 create-listener --no-cli-pager \
-  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9533 \
-  --default-actions Type=forward,TargetGroupArn=$QUARTO > /dev/null && echo "Listener 9533 OK"
-
-aws elbv2 create-listener --no-cli-pager \
-  --load-balancer-arn $ALB_ARN --protocol HTTP --port 9534 \
-  --default-actions Type=forward,TargetGroupArn=$PAGAMENTO > /dev/null && echo "Listener 9534 OK"
-
-# Atualiza os ARNs nos JSONs de criação de serviço
-sed -i "s|\"targetGroupArn\": \"arn[^\"]*cliente-tg[^\"]*\"|\"targetGroupArn\": \"$CLIENTE\"|g" create-cliente-service.json
-sed -i "s|\"targetGroupArn\": \"arn[^\"]*reserva-tg[^\"]*\"|\"targetGroupArn\": \"$RESERVA\"|g" create-reserva-service.json
-sed -i "s|\"targetGroupArn\": \"arn[^\"]*quarto-tg[^\"]*\"|\"targetGroupArn\": \"$QUARTO\"|g" create-quarto-service.json
-sed -i "s|\"targetGroupArn\": \"arn[^\"]*pagamento-tg[^\"]*\"|\"targetGroupArn\": \"$PAGAMENTO\"|g" create-pagamento-service.json
-
-# Confirma que os ARNs foram substituídos
-grep "targetGroupArn" create-cliente-service.json
-
-# Cria os 4 serviços ECS que faltaram
-aws ecs create-service --no-cli-pager --cli-input-json file://create-cliente-service.json
-aws ecs create-service --no-cli-pager --cli-input-json file://create-reserva-service.json
-aws ecs create-service --no-cli-pager --cli-input-json file://create-quarto-service.json
-aws ecs create-service --no-cli-pager --cli-input-json file://create-pagamento-service.json
-
-# Verifica os 5 serviços
-aws ecs list-services --no-cli-pager --cluster hotel-cluster --output table
+echo '{"HttpCode":"200,405"}' > m-cliente.json
+aws elbv2 create-target-group ... --matcher file://m-cliente.json
 ```
 
-### Depois de corrigir — próximo passo obrigatório
+**2. Services falhando com "Target Group ARN cannot be blank"**
+Os JSONs `create-<ms>-service.json` tinham `targetGroupArn` vazio (sed rodou antes dos TGs existirem).
+Fix: recriar os JSONs com heredoc já com os ARNs reais embutidos.
 
-As imagens Docker ainda não foram buildadas. Os serviços vão ficar em `PENDING` até as builds serem feitas:
-
+**3. Imagens com tag `IMAGE1_NAME` (placeholder do CodePipeline)**
+ECS não conseguia puxar a imagem. Fix: registrar novas revisões dos task definitions com `:latest` e forçar deploy:
 ```bash
-# Volta para a Fase 3 — build e push das imagens
-cd ~/hotel
-
-ACCOUNT_ID="508383244883"
-REGION="us-east-1"
-
-aws ecr get-login-password --region $REGION | \
-  docker login --username AWS \
-  --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
-
-# Build e push de cada serviço (rodar um por vez)
-cd ~/hotel/frontHotelaria && docker build -t hotel-front . && \
-  docker tag hotel-front:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-front:latest && \
-  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-front:latest
-
-cd ~/hotel/PI_hotel_cliente && docker build -t hotel-cliente . && \
-  docker tag hotel-cliente:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-cliente:latest && \
-  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-cliente:latest
-
-cd ~/hotel/PI_Hotel_Reserva && docker build -t hotel-reserva . && \
-  docker tag hotel-reserva:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-reserva:latest && \
-  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-reserva:latest
-
-cd ~/hotel/pi_hotel_quarto && docker build -t hotel-quarto . && \
-  docker tag hotel-quarto:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-quarto:latest && \
-  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-quarto:latest
-
-cd ~/hotel/api_hotel_pagamento && docker build -t hotel-pagamento . && \
-  docker tag hotel-pagamento:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-pagamento:latest && \
-  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/hotel-pagamento:latest
+for svc in front cliente reserva quarto pagamento; do
+  sed 's/IMAGE1_NAME/latest/g' taskdef-${svc}.json > taskdef-${svc}-latest.json
+  aws ecs register-task-definition --cli-input-json file://taskdef-${svc}-latest.json
+done
+for svc in cliente reserva quarto pagamento; do
+  aws ecs update-service --cluster hotel-cluster --service ${svc}-service \
+    --task-definition hotel-${svc} --force-new-deployment
+done
 ```
 
-> **Nota importante:** Os task definitions usam a tag `IMAGE1_NAME` como placeholder (para ser substituída pelo CodePipeline). Para testar antes de configurar o CodePipeline, é necessário registrar novas revisões dos task definitions com a tag `:latest`. Isso é feito automaticamente quando o CodePipeline rodar pela primeira vez (Fases 9 e 10).
+**4. MS Quarto em crash loop — `prisma db push` no boot (P1001)**
+`CMD ["sh","-c","npx prisma db push && node src/server.js"]` falhava quando o banco SENAC tinha latência alta.
+Schema já existe (criado pelo Jenkins) — o `db push` era redundante e fatal no boot.
+Fix: Dockerfile do quarto (e do reserva) alterado para `CMD ["node", "src/server.js"]` + rebuild/push + force-new-deployment.
+
+**5. MS Quarto — health check `Target.Timeout` mesmo app respondendo 200**
+A rota `/api/quartos` (query com Prisma no banco SENAC externo) levava 6-7s. Timeout padrão era 5s.
+Fix:
+```bash
+QUARTO_ARN=$(aws elbv2 describe-target-groups --names quarto-tg \
+  --query 'TargetGroups[0].TargetGroupArn' --output text)
+aws elbv2 modify-target-group --target-group-arn $QUARTO_ARN \
+  --health-check-timeout-seconds 20 \
+  --health-check-interval-seconds 30 \
+  --healthy-threshold-count 2 \
+  --unhealthy-threshold-count 5
+```
+
+### Próximos passos
+
+- [ ] **Fase 8** — CodeCommit + AppSpec files + imagedefinitions
+- [ ] **Fase 9** — CodeDeploy (application `hotel-deploy` + deployment group `hotel-front-dg`, blue/green portas 80/8080)
+- [ ] **Fase 10** — CodePipeline (5 pipelines)
+- [ ] **Fase 11** — Validação final (login pelo front + navegação)
 
 ---
 
@@ -176,8 +134,8 @@ Todos os repos abaixo estão em `RuanCabralBandeira` com as mudanças AWS já ap
 | `frontHotelaria/vite.config.js` | `base: '/20261prj5/hotel/'` → `base: '/'` |
 | `frontHotelaria/src/routes/AppRoutes.jsx` | `basename="/20261prj5/hotel"` → `basename="/"` |
 | `frontHotelaria/src/services/api.js` | Removidos fallbacks SENAC; redirect 401 corrigido para `/login` |
-| `PI_Hotel_Reserva/Dockerfile` | CMD agora roda `prisma db push` antes de iniciar o servidor |
-| `pi_hotel_quarto/Dockerfile` | Substituído `npm run dev` (nodemon) por `node src/server.js`; adicionado `prisma db push` |
+| `PI_Hotel_Reserva/Dockerfile` | CMD executa direto `node src/server.js` (sem `prisma db push` — schema já existe no SENAC, latência causava crash loop P1001) |
+| `pi_hotel_quarto/Dockerfile` | Substituído `npm run dev` (nodemon) por `node src/server.js`; removido `prisma db push` do boot pelo mesmo motivo do reserva |
 
 ## Ambiente de trabalho — como executar os comandos deste guia
 
@@ -541,7 +499,7 @@ ALB hotelLB (DNS público: hotelLB-xxxx.us-east-1.elb.amazonaws.com)
     └── Porta 9534  ──► pagamento-tg  ──► ECS: pagamento-svc   (porta 9534)
 
 Infraestrutura interna (VPC):
-    └── EC2 hotel-rabbitmq  (IP privado: 10.0.X.X, porta 5672)
+    └── EC2 hotel-rabbitmq  (IP privado: 172.31.11.117, porta 5672)
 
 Banco de dados (externo — SENAC, acessível de qualquer rede):
     └── edumysql.acesso.rj.senac.br:3306  (mesmo banco usado no Jenkins/SENAC)
@@ -686,8 +644,8 @@ Se aparecer o painel com **Overview** e **Connections**, o RabbitMQ está funcio
 Antes de prosseguir, confirma que o banco responde pela EC2 de builds:
 
 ```bash
-# Instala o cliente MySQL se necessário
-sudo dnf install -y mysql
+# Instala o cliente MySQL (Amazon Linux 2023 usa mariadb105, não mysql)
+sudo dnf install -y mariadb105
 
 # Testa conexão com o banco do MS Cliente
 mysql -h edumysql.acesso.rj.senac.br \
